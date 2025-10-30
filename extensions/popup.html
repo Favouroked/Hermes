@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hermes Job Search Extension</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      width: 500px;
+      min-height: 400px;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .header {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .header p {
+      font-size: 13px;
+      color: #666;
+    }
+
+    .installation-id {
+      background: #f0f7ff;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: #333;
+      word-break: break-all;
+    }
+
+    .installation-id strong {
+      color: #0066cc;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      font-weight: 600;
+      color: #555;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+
+    #resumeText {
+      min-height: 120px;
+    }
+
+    #preferencesText {
+      min-height: 80px;
+    }
+
+    .button-container {
+      margin-top: 20px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .submit-btn {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .submit-btn:hover:not(:disabled) {
+      background: #45a049;
+    }
+
+    .submit-btn:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .status-message {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status-message.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      display: block;
+    }
+
+    .status-message.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      display: block;
+    }
+
+    .status-message.info {
+      background: #d1ecf1;
+      border: 1px solid #bee5eb;
+      color: #0c5460;
+      display: block;
+    }
+
+    .status-message.completion {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      color: #856404;
+      display: block;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .status-message strong {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .progress-info {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Hermes Job Search</h1>
+      <p>Automated job listing discovery</p>
+    </div>
+
+    <div class="installation-id">
+      <strong>Installation ID:</strong> <span id="installationIdDisplay">Loading...</span>
+    </div>
+
+    <div id="mainForm">
+      <div class="form-group">
+        <label class="form-label" for="resumeText">Resume Text</label>
+        <textarea id="resumeText" placeholder="Paste your resume text here..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="preferencesText">Job Preferences</label>
+        <textarea id="preferencesText" placeholder="Enter your job preferences (e.g., remote positions, full-time, specific technologies, salary expectations...)"></textarea>
+      </div>
+
+      <div class="button-container">
+        <button class="submit-btn" id="submitBtn">Start Job Search</button>
+      </div>
+
+      <div class="status-message" id="statusMessage"></div>
+      <div class="progress-info" id="progressInfo"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Hermes Page Analyzer",
+  "version": "1.0.0",
+  "description": "Sends page HTML to localhost:8080 and executes returned JavaScript with user permission",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8080/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

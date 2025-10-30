@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env/
+.venv*
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+# Chrome Extension
+*.crx
+*.pem
+node_modules/
+*.zip
+
+# Project specific
+instance/
+.webassets-cache
+.env
+.coverage
+htmlcov/
+data/
