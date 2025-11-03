@@ -3,7 +3,9 @@ import os
 from typing import Optional
 
 
-def setup_logger(name: str = __name__, level: int = logging.INFO, file_path: Optional[str] = None) -> logging.Logger:
+def setup_logger(
+    name: str = __name__, level: int = logging.INFO, file_path: Optional[str] = None
+) -> logging.Logger:
     """
     Configure and return a logger instance with specified name and level.
 
@@ -48,7 +50,7 @@ def get_logger(name: str = __name__, file_path: Optional[str] = None) -> logging
         Configured logger instance
     """
 
-    logs_file = os.getenv('LOGS_FILE')
+    logs_file = os.getenv("LOGS_FILE")
     if logs_file and not file_path:
         file_path = logs_file
 

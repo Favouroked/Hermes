@@ -1,29 +1,21 @@
-from concurrent.futures import ProcessPoolExecutor, Future
-from typing import Literal, Optional, Dict
+import atexit
+import os
+import signal
+from concurrent.futures import Future, ProcessPoolExecutor
+from typing import Dict
+from uuid import uuid4
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
 from src.agents.lever import LeverAgent
 from src.config.logger import get_logger
-from src.db.model import (
-    SessionLocal,
-    JobAnalysis,
-    ApplicationActions,
-    JobGoogleSearchQuery,
-)
-from src.models.api import (
-    UrlsRequest,
-    StatusRequest,
-    ListingsRequest,
-    Action,
-    ExtensionRequest,
-    InstallRequest,
-)
-from src.processors.utils import clean_url
-
+from src.db.model import (ApplicationActions, JobAnalysis,
+                          JobGoogleSearchQuery, SessionLocal)
 from src.jobs.lever import execute as trigger_jobs_processing
-from uuid import uuid4
+from src.models.api import (Action, ExtensionRequest, InstallRequest,
+                            ListingsRequest, StatusRequest, UrlsRequest)
+from src.processors.utils import clean_url
 
 logger = get_logger(__name__)
 
@@ -203,6 +195,27 @@ def analyze_page():
 
     return jsonify([action.model_dump(mode="json") for action in actions])
 
+
+def shutdown_pool_immediately():
+    # Try to cancel futures that haven't started, and stop accepting new tasks
+    # wait=False => return immediately; running tasks will be terminated by process exit
+    try:
+        EXECUTOR.shutdown(wait=False, cancel_futures=True)
+    except Exception:
+        pass
+
+
+def handle_sigterm(signum, frame):
+    shutdown_pool_immediately()
+    # Exit process quickly after signaling shutdown
+    os._exit(0)
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
+signal.signal(signal.SIGINT, handle_sigterm)
+
+# Fallback at-exit hook (e.g., when interpreter exits normally)
+atexit.register(shutdown_pool_immediately)
 
 if __name__ == "__main__":
     app.run(port=8080)

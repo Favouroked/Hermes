@@ -1,14 +1,5 @@
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    JSON,
-    create_engine,
-)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
+                        String, Text, create_engine)
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 

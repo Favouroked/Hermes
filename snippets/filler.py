@@ -1,6 +1,7 @@
-from src.web.lever import LeverBrowser
 import asyncio
 import traceback
+
+from src.web.lever import LeverBrowser
 
 LINK = "https://jobs.lever.co/cognitiv/b355e50a-4058-4608-ad19-d8880308cc71/apply"
 

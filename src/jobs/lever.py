@@ -1,5 +1,6 @@
-from src.processors.lever import LeverProcessor
 import asyncio
+
+from src.processors.lever import LeverProcessor
 
 
 async def _execute(installation_id: str):
@@ -8,4 +9,7 @@ async def _execute(installation_id: str):
 
 
 def execute(installation_id: str):
-    raise SystemExit(asyncio.run(_execute(installation_id)))
+    try:
+        return asyncio.run(_execute(installation_id))
+    except Exception as e:
+        raise e

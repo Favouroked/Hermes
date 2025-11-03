@@ -1,7 +1,8 @@
-from ulid import ULID
 import asyncio
 import json
 from typing import Optional
+
+from ulid import ULID
 
 try:
     from pyppeteer import launch

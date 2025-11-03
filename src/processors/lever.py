@@ -1,19 +1,15 @@
 from typing import AsyncIterator, List, Optional
 
+import requests
+from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from src.agents.lever import AgentAction, LeverAgent
 from src.config.logger import get_logger
-from src.db.model import (
-    ApplicationActions,
-    JobAnalysis,
-    SessionLocal,
-)
+from src.db.model import ApplicationActions, JobAnalysis, SessionLocal
 from src.models.processors import LeverQuestion
 from src.processors.utils import clean_url
 from src.web.lever import LeverAutoBrowser, LeverBrowser
-import requests
-from bs4 import BeautifulSoup
 
 
 class LeverProcessor:

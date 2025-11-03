@@ -1,5 +1,6 @@
+from typing import Literal, Optional, Union
+
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, Union
 
 
 class JobGoogleSearchQuery(BaseModel):

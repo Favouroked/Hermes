@@ -1,12 +1,13 @@
-from ollama import chat, ChatResponse
-import time
 import json
-from bs4 import BeautifulSoup
-import requests
-from model import SessionLocal, JobAnalysis
-from sqlalchemy import and_
 import os
+import time
 import webbrowser
+
+import requests
+from bs4 import BeautifulSoup
+from model import JobAnalysis, SessionLocal
+from ollama import ChatResponse, chat
+from sqlalchemy import and_
 
 
 def save_job_analysis(data: dict) -> int:

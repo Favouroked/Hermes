@@ -1,15 +1,12 @@
 import json
-from typing import Literal, Optional, List
+from typing import List, Literal, Optional
 
 import requests
-import json
 
-from src.config.prompts import (
-    FILLER_AGENT_SYSTEM_PROMPT,
-    GOOGLE_SEARCH_PROMPT,
-    JOB_ANALYSIS_SYSTEM_PROMPT,
-)
-from src.models.agents import AgentAction, JobGoogleSearchQuery, JobDetails
+from src.config.prompts import (FILLER_AGENT_SYSTEM_PROMPT,
+                                GOOGLE_SEARCH_PROMPT,
+                                JOB_ANALYSIS_SYSTEM_PROMPT)
+from src.models.agents import AgentAction, JobDetails, JobGoogleSearchQuery
 from src.models.api import InstallRequest
 
 
