@@ -1,4 +1,5 @@
 from typing import AsyncIterator, List, Optional
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -38,12 +39,26 @@ class LeverProcessor:
                     f"Error processing question:\n\n{question_html}.\n"
                 )
 
+    def _validate_lever_url(self, url: str) -> bool:
+        try:
+            parsed = urlparse(url)
+            parts = parsed.path.strip('/').split('/')
+            return (parsed.scheme == 'https' and
+                    len(parts) >= 2)
+        except Exception:
+            return False
+
     async def process_job(self, job_data: dict):
         link = job_data["link"]
         job_id = job_data["id"]
         if link.endswith("/apply"):
             link = link[:-6]
+
+        if not self._validate_lever_url(link):
+            raise ValueError(f"Invalid Lever job URL format: {link}")
+
         r = requests.get(link)
+
         soup = BeautifulSoup(r.text, "html.parser")
         page_text = soup.get_text()
         job_info = self._agent.generate_job_info(page_text)
