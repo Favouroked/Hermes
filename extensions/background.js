@@ -11,10 +11,21 @@ let jobSearchState = {
   completedUrls: []
 };
 
+// Job application state (for sequential manual application)
+let applicationState = {
+  isActive: false,
+  urls: [],
+  currentIndex: 0,
+  installationId: null,
+  currentTabId: null
+};
+
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startJobSearch') {
     handleStartJobSearch(request.urls, request.installationId);
+  } else if (request.action === 'startApplying') {
+    handleStartApplying(request.urls, request.installationId);
   } else if (request.action === 'linksExtracted') {
     handleLinksExtracted(request.links, sender.tab.id);
   } else if (request.action === 'captchaDetected') {
@@ -39,6 +50,83 @@ async function handleStartJobSearch(urls, installationId) {
 
   // Process URLs sequentially
   await processNextUrl();
+}
+
+// Start the job application process (sequential with manual tab closing)
+async function handleStartApplying(urls, installationId) {
+  console.log('Starting job applications with', urls.length, 'URLs');
+  
+  applicationState = {
+    isActive: true,
+    urls: urls,
+    currentIndex: 0,
+    installationId: installationId,
+    currentTabId: null
+  };
+
+  // Open first URL
+  await openNextApplicationUrl();
+}
+
+// Open the next application URL
+async function openNextApplicationUrl() {
+  if (applicationState.currentIndex >= applicationState.urls.length) {
+    // All URLs processed
+    await handleApplicationComplete();
+    return;
+  }
+
+  const currentUrl = applicationState.urls[applicationState.currentIndex];
+  console.log(`Opening application ${applicationState.currentIndex + 1}/${applicationState.urls.length}: ${currentUrl}`);
+
+  // Notify popup of progress
+  chrome.runtime.sendMessage({
+    action: 'applicationProgress',
+    current: applicationState.currentIndex + 1,
+    total: applicationState.urls.length
+  });
+
+  try {
+    // Open URL in a new tab
+    const tab = await chrome.tabs.create({
+      url: currentUrl,
+      active: true
+    });
+
+    // Store current tab ID
+    applicationState.currentTabId = tab.id;
+    console.log(`Opened tab ${tab.id}. Waiting for user to close it...`);
+
+  } catch (error) {
+    console.error('Error opening application tab:', error);
+    // Continue with next URL even if this one failed
+    applicationState.currentIndex++;
+    await openNextApplicationUrl();
+  }
+}
+
+// Handle application completion
+async function handleApplicationComplete() {
+  console.log('All job applications visited!');
+  
+  applicationState.isActive = false;
+
+  // Clear applying state
+  await chrome.storage.local.remove(['isApplying']);
+
+  // Notify popup
+  chrome.runtime.sendMessage({
+    action: 'applicationComplete'
+  });
+
+  // Show completion notification
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icon48.png',
+    title: 'Hermes: Applications Complete',
+    message: 'You have visited all job application URLs!',
+    priority: 1
+  });
 }
 
 // Process the next URL in the queue
@@ -174,6 +262,7 @@ async function handleSearchComplete() {
 
 // Listen for tab updates to detect when pages finish loading
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Handle job search tabs (Google search pages)
   if (jobSearchState.isActive && changeInfo.status === 'complete') {
     // Check if this is one of our search tabs
     const urlInfo = jobSearchState.completedUrls.find(u => u && u.tabId === tabId);
@@ -182,6 +271,39 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       console.log(`Tab ${tabId} finished loading: ${tab.url}`);
       // Content script will automatically start processing
     }
+  }
+
+  // Handle job application tabs
+  if (applicationState.isActive && changeInfo.status === 'complete') {
+    // Check if this is the current application tab
+    if (applicationState.currentTabId === tabId) {
+      console.log(`Job application tab ${tabId} finished loading: ${tab.url}`);
+      console.log('Sending processJobPage message to content script...');
+      
+      // Send message to content script to process the job page
+      chrome.tabs.sendMessage(tabId, {
+        action: 'processJobPage',
+        installationId: applicationState.installationId
+      }).catch(error => {
+        console.error('Error sending processJobPage message:', error);
+      });
+    }
+  }
+});
+
+// Listen for tab closes to open next application URL
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  if (applicationState.isActive && applicationState.currentTabId === tabId) {
+    console.log(`Application tab ${tabId} closed by user. Opening next URL...`);
+    
+    // Move to next URL
+    applicationState.currentIndex++;
+    applicationState.currentTabId = null;
+    
+    // Open next URL after a short delay
+    setTimeout(() => {
+      openNextApplicationUrl();
+    }, 500);
   }
 });
 

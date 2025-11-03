@@ -209,6 +209,132 @@
         }
     }
 
+    // ============ JOB APPLICATION PAGE HANDLING ============
+
+    // Extract page HTML
+    function getPageHTML() {
+        return document.documentElement.outerHTML;
+    }
+
+    // Call /api/filler and execute actions
+    async function processJobApplicationPage(installationId) {
+        console.log('Processing job application page...');
+        
+        try {
+            // Wait for page to fully load
+            await waitForPageLoad();
+
+            // Get page HTML and current URL
+            const html = getPageHTML();
+            const url = window.location.href;
+            const timestamp = new Date().toISOString();
+
+            console.log('Sending page data to /api/filler...');
+
+            // Call /api/filler
+            const response = await fetch('http://localhost:8080/api/filler', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    url: url,
+                    html: html,
+                    timestamp: timestamp,
+                    installation_id: installationId
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with status: ${response.status}`);
+            }
+
+            const actions = await response.json();
+            console.log(`Received ${actions.length} actions from /api/filler`);
+
+            // Execute actions if any
+            if (actions.length > 0) {
+                await executeActions(actions);
+            } else {
+                console.log('No actions to execute');
+            }
+
+        } catch (error) {
+            console.error('Error processing job application page:', error);
+        }
+    }
+
+    // Execute actions sequentially
+    async function executeActions(actions) {
+        console.log('Executing actions...');
+
+        for (let i = 0; i < actions.length; i++) {
+            const action = actions[i];
+            console.log(`Executing action ${i + 1}/${actions.length}:`, action.action);
+
+            try {
+                let success = false;
+
+                switch (action.action) {
+                    case 'type':
+                        if (action.query_selector && action.value !== undefined) {
+                            success = doType(action.query_selector, action.value);
+                        }
+                        break;
+
+                    case 'click':
+                        if (action.query_selector) {
+                            success = doClick(action.query_selector);
+                        }
+                        break;
+
+                    case 'select':
+                        if (action.query_selector && action.value !== undefined) {
+                            success = doSelect(action.query_selector, action.value);
+                        }
+                        break;
+
+                    case 'alert':
+                        // Show alert to user
+                        if (action.value) {
+                            alert(action.value);
+                            success = true;
+                        }
+                        break;
+
+                    default:
+                        console.warn(`Unknown action type: ${action.action}`);
+                }
+
+                if (success) {
+                    console.log(`Action ${i + 1} executed successfully`);
+                } else {
+                    console.warn(`Action ${i + 1} failed to execute`);
+                }
+
+                // Add small delay between actions
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+            } catch (error) {
+                console.error(`Error executing action ${i + 1}:`, error);
+            }
+        }
+
+        console.log('All actions executed');
+    }
+
+    // Listen for messages from background script
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'processJobPage') {
+            console.log('Received processJobPage message with installation_id:', message.installationId);
+            processJobApplicationPage(message.installationId);
+            sendResponse({ status: 'processing' });
+        }
+        return true; // Keep message channel open for async response
+    });
+
+    // ============ END JOB APPLICATION PAGE HANDLING ============
+
     // Main initialization
     async function init() {
         console.log('Hermes content script loaded');

@@ -13,10 +13,16 @@
       installationId = await getOrCreateInstallationId();
       document.getElementById('installationIdDisplay').textContent = installationId;
 
+      // Check status from backend
+      await checkJobStatus();
+
       // Check if already processing
-      const state = await chrome.storage.local.get(['isProcessing', 'completionTime']);
+      const state = await chrome.storage.local.get(['isProcessing', 'completionTime', 'isApplying']);
       if (state.isProcessing) {
         showStatus('info', 'Job search is in progress...', 'Please wait while we process the search results.');
+        disableForm();
+      } else if (state.isApplying) {
+        showStatus('info', 'Application in progress...', 'Close the current tab to open the next job application.');
         disableForm();
       } else if (state.completionTime) {
         const completionDate = new Date(state.completionTime);
@@ -55,6 +61,101 @@
     const newId = `hermes_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     await chrome.storage.local.set({ installationId: newId });
     return newId;
+  }
+
+  // Check job status from backend
+  async function checkJobStatus() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          installation_id: installationId
+        })
+      });
+
+      if (response.status === 200) {
+        // Jobs are ready
+        const result = await response.json();
+        await chrome.storage.local.set({ jobsReady: true });
+        showJobsReadyUI(result.job_count);
+      } else if (response.status === 202) {
+        // Still processing
+        await chrome.storage.local.set({ jobsReady: false });
+      }
+    } catch (error) {
+      console.error('Error checking job status:', error);
+      // Don't show error to user, just log it
+    }
+  }
+
+  // Show UI when jobs are ready
+  function showJobsReadyUI(jobCount) {
+    const state = chrome.storage.local.get(['isProcessing', 'completionTime', 'isApplying']);
+    state.then(s => {
+      if (!s.isProcessing && !s.completionTime && !s.isApplying) {
+        // Create and show "Start Applying" button
+        const applyBtn = document.getElementById('applyBtn');
+        if (applyBtn) {
+          applyBtn.style.display = 'block';
+          applyBtn.addEventListener('click', handleStartApplying);
+        }
+        disableForm();
+        showStatus('success', 'Jobs Ready!', `${jobCount} job applications are ready. Click "Start Applying" to begin.`);
+      }
+    });
+  }
+
+  // Handle start applying button click
+  async function handleStartApplying() {
+    try {
+      showStatus('info', 'Loading jobs...', 'Fetching job URLs from server...');
+      
+      // Get URLs from backend
+      const response = await fetch(`${API_BASE_URL}/api/urls`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          installation_id: installationId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (!result.urls || result.urls.length === 0) {
+        throw new Error('No job URLs received from server');
+      }
+
+      showStatus('success', 'Starting Applications!', `Opening ${result.urls.length} job applications sequentially...`);
+
+      // Mark as applying
+      await chrome.storage.local.set({ isApplying: true });
+
+      // Send URLs to background script for sequential processing
+      chrome.runtime.sendMessage({
+        action: 'startApplying',
+        urls: result.urls,
+        installationId: installationId
+      });
+
+      // Hide apply button
+      const applyBtn = document.getElementById('applyBtn');
+      if (applyBtn) {
+        applyBtn.style.display = 'none';
+      }
+
+    } catch (error) {
+      console.error('Error starting application process:', error);
+      showStatus('error', 'Error', `Failed to start applications: ${error.message}`);
+    }
   }
 
   // Handle form submission
@@ -130,6 +231,10 @@
       showStatus('error', 'Error', message.error);
       enableForm();
       chrome.storage.local.remove(['isProcessing']);
+    } else if (message.action === 'applicationProgress') {
+      updateApplicationProgress(message.current, message.total);
+    } else if (message.action === 'applicationComplete') {
+      handleApplicationComplete();
     }
   }
 
@@ -137,6 +242,12 @@
   function updateProgress(current, total) {
     const progressInfo = document.getElementById('progressInfo');
     progressInfo.textContent = `Processing search ${current} of ${total}...`;
+  }
+
+  // Update application progress information
+  function updateApplicationProgress(current, total) {
+    const progressInfo = document.getElementById('progressInfo');
+    progressInfo.textContent = `Visiting application ${current} of ${total}. Close the tab when done to continue.`;
   }
 
   // Handle search completion
@@ -148,6 +259,17 @@
     });
     
     showCompletionMessage(24);
+  }
+
+  // Handle application completion
+  async function handleApplicationComplete() {
+    await chrome.storage.local.remove(['isApplying']);
+    
+    showStatus('success', 'Applications Complete!', 'You have visited all job application URLs. You can now close this popup.');
+    document.getElementById('progressInfo').textContent = '';
+    
+    // Re-enable form for new searches
+    enableForm();
   }
 
   // Show completion message

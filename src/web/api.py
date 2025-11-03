@@ -15,6 +15,7 @@ class ExtensionRequest(BaseModel):
     url: str
     html: str
     timestamp: str
+    installation_id: str
 
 
 class Action(BaseModel):
@@ -32,6 +33,14 @@ class InstallRequest(BaseModel):
 class ListingsRequest(BaseModel):
     installation_id: str
     links: list[str]
+
+
+class StatusRequest(BaseModel):
+    installation_id: str
+
+
+class UrlsRequest(BaseModel):
+    installation_id: str
 
 
 app = Flask(__name__)
@@ -123,6 +132,56 @@ def listings():
         logger.info(f"  - {link}")
     
     return jsonify({"status": "success", "links_received": len(data.links)})
+
+
+@app.route("/api/status", methods=["POST"])
+def status():
+    """
+    Checks if jobs are ready for the given installation_id.
+    Returns 200 if jobs are ready, 202 if still processing.
+    """
+    data = StatusRequest.model_validate(request.get_json())
+    logger.info(f"Status check from installation: {data.installation_id}")
+    
+    # TODO: Check database for processed jobs for this installation_id
+    # For now, simulate that jobs are ready after some time
+    # In a real implementation, this would query the database to check
+    # if job analysis and application actions are ready
+    
+    with SessionLocal() as session:
+        # Check if there are any job postings with application actions
+        job_count = session.query(JobAnalysis).count()
+        
+        if job_count > 0:
+            # Jobs are ready
+            logger.info(f"Jobs are ready for installation: {data.installation_id}")
+            return jsonify({"status": "ready", "job_count": job_count}), 200
+        else:
+            # Still processing
+            logger.info(f"Jobs not ready yet for installation: {data.installation_id}")
+            return jsonify({"status": "processing"}), 202
+
+
+@app.route("/api/urls", methods=["POST"])
+def urls():
+    """
+    Returns a list of job application URLs for the given installation_id.
+    These are the URLs that the user should visit to apply for jobs.
+    """
+    data = UrlsRequest.model_validate(request.get_json())
+    logger.info(f"URLs request from installation: {data.installation_id}")
+    
+    # TODO: Retrieve job URLs from database for this installation_id
+    # For now, return example URLs
+    # In a real implementation, this would query JobAnalysis table
+    # and return the application URLs for jobs matching the user's preferences
+    
+    with SessionLocal() as session:
+        jobs = session.query(JobAnalysis).limit(10).all()
+        job_urls = [job.link for job in jobs if job.link]
+        
+        logger.info(f"Returning {len(job_urls)} URLs for installation: {data.installation_id}")
+        return jsonify({"urls": job_urls})
 
 
 if __name__ == "__main__":
