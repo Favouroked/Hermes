@@ -6,6 +6,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    JSON,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -31,9 +32,12 @@ class JobAnalysis(Base):
     cover_letter = Column(Text)
     page_text = Column(Text)
     expired = Column(Boolean, nullable=False, default=False)
+    has_error = Column(Boolean, nullable=False, default=False)
+    is_processing = Column(Boolean, nullable=False, default=False)
     is_processed = Column(Boolean, nullable=False, default=False)
     notes = Column(Text)
     is_agent_processed = Column(Boolean, nullable=False, default=False)
+    installation_id = Column(String(128), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -61,6 +65,22 @@ class ApplicationActions(Base):
     answer_text = Column(Text)
     action = Column(Text, nullable=False)
     query_selector = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class JobGoogleSearchQuery(Base):
+    __tablename__ = "job_google_search_queries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    installation_id = Column(String(128), nullable=False)
+    site = Column(String(32), nullable=False)  # e.g., "lever"
+    role_focus = Column(String(256), nullable=False)
+    filters = Column(JSON, nullable=False)
+    query = Column(Text, nullable=False)
+    google_search_url = Column(Text, nullable=False)
+
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

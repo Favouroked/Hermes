@@ -1,32 +1,74 @@
 import json
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 
 import requests
-from pydantic import BaseModel, Field
+import json
 
-from src.config.prompts import FILLER_AGENT_SYSTEM_PROMPT
-
-
-class AgentAction(BaseModel):
-    """Action that can be performed on the page to answer the question."""
-
-    action: Literal["type", "click", "select"] = Field(
-        description="The type of action to perform on the browser to answer the question."
-    )
-    question_text: str = Field(description="The question the Agent answered")
-    query_selector: str = Field(
-        description="The query selector to select the answer field."
-    )
-    value: Optional[str] = Field(
-        default=None,
-        description="The answer value. This is not required for 'click' actions.",
-    )
+from src.config.prompts import (
+    FILLER_AGENT_SYSTEM_PROMPT,
+    GOOGLE_SEARCH_PROMPT,
+    JOB_ANALYSIS_SYSTEM_PROMPT,
+)
+from src.models.agents import AgentAction, JobGoogleSearchQuery, JobDetails
+from src.models.api import InstallRequest
 
 
 class LeverAgent:
     def __init__(self):
         models = ["gpt-oss:20b", "gemma3:12b", "qwen3:14b"]
         self._model_name = models[2]
+
+    def generate_google_searches(
+        self, payload: InstallRequest
+    ) -> List[JobGoogleSearchQuery]:
+        prompt = (
+            "Resume text:\n\n"
+            f"{payload.resume}\n\n"
+            "Preferences:\n\n"
+            f"{payload.preferences}\n\n"
+        )
+
+        payload = {
+            "model": self._model_name,
+            "prompt": prompt,
+            "system": GOOGLE_SEARCH_PROMPT,
+            "format": JobGoogleSearchQuery.model_json_schema(),  # instruct Ollama to return JSON matching schema
+            "stream": False,
+            "options": {
+                "temperature": 0.0,
+            },
+        }
+
+        resp = requests.post(
+            "http://localhost:11434/api/generate", data=json.dumps(payload), timeout=120
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        raw = data.get("response", "").strip()
+        json_raw = json.loads(raw)
+        return [JobGoogleSearchQuery.model_validate(r) for r in json_raw]
+
+    def generate_job_info(self, page_text: str) -> JobDetails:
+        prompt = f"Analyze the page below:\n{page_text}"
+
+        payload = {
+            "model": self._model_name,
+            "prompt": prompt,
+            "system": JOB_ANALYSIS_SYSTEM_PROMPT,
+            "format": JobDetails.model_json_schema(),  # instruct Ollama to return JSON matching schema
+            "stream": False,
+            "options": {
+                "temperature": 0.0,
+            },
+        }
+
+        resp = requests.post(
+            "http://localhost:11434/api/generate", data=json.dumps(payload), timeout=120
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        raw = data.get("response", "").strip()
+        return JobDetails.model_validate_json(raw)
 
     def generate_action(self, question_html: str, job_description: str) -> AgentAction:
         prompt = (

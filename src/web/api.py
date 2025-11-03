@@ -1,47 +1,34 @@
-from typing import Literal, Optional
+from concurrent.futures import ProcessPoolExecutor, Future
+from typing import Literal, Optional, Dict
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from pydantic import BaseModel
 
+from src.agents.lever import LeverAgent
 from src.config.logger import get_logger
-from src.db.model import SessionLocal, JobAnalysis, ApplicationActions
+from src.db.model import (
+    SessionLocal,
+    JobAnalysis,
+    ApplicationActions,
+    JobGoogleSearchQuery,
+)
+from src.models.api import (
+    UrlsRequest,
+    StatusRequest,
+    ListingsRequest,
+    Action,
+    ExtensionRequest,
+    InstallRequest,
+)
 from src.processors.utils import clean_url
+
+from src.jobs.lever import execute as trigger_jobs_processing
+from uuid import uuid4
 
 logger = get_logger(__name__)
 
-
-class ExtensionRequest(BaseModel):
-    url: str
-    html: str
-    timestamp: str
-    installation_id: str
-
-
-class Action(BaseModel):
-    action: Literal["type", "click", "select", "alert"]
-    query_selector: Optional[str]
-    value: Optional[str]
-
-
-class InstallRequest(BaseModel):
-    installation_id: str
-    resume: str
-    preferences: str
-
-
-class ListingsRequest(BaseModel):
-    installation_id: str
-    links: list[str]
-
-
-class StatusRequest(BaseModel):
-    installation_id: str
-
-
-class UrlsRequest(BaseModel):
-    installation_id: str
-
+EXECUTOR = ProcessPoolExecutor(max_workers=2)
+JOBS: Dict[str, Future] = {}
 
 app = Flask(__name__)
 CORS(app)
@@ -54,6 +41,129 @@ def index():
             "online": True,
         }
     )
+
+
+@app.route("/api/install", methods=["POST"])
+def install():
+    """
+    Receives installation_id, resume, and preferences from the extension.
+    Returns a list of Google search URLs to scrape for job listings.
+    """
+    installation_data = InstallRequest.model_validate(request.get_json())
+    logger.info(f"Install request from: {installation_data.installation_id}")
+
+    agent = LeverAgent()
+
+    search_data = agent.generate_google_searches(installation_data)
+
+    with SessionLocal() as session:
+        records = [
+            JobGoogleSearchQuery(
+                installation_id=installation_data.installation_id,
+                site=data.site,
+                role_focus=data.role_focus,
+                filters=data.filters,
+                query=data.query,
+                google_search_url=data.google_search_url,
+            )
+            for data in search_data
+        ]
+        session.add_all(records)
+        session.commit()
+
+        return jsonify({"urls": [record.google_search_url for record in records]})
+
+
+@app.route("/api/listings", methods=["POST"])
+def listings():
+    """
+    Receives installation_id and links extracted from a Google search page.
+    Stores the links for processing.
+    """
+    data = ListingsRequest.model_validate(request.get_json())
+    logger.info(
+        f"Received {len(data.links)} links from installation: {data.installation_id}"
+    )
+
+    with SessionLocal() as session:
+        records = [
+            JobAnalysis(
+                link=clean_url(link),
+                title="processing...",
+                expired=False,
+                installation_id=data.installation_id,
+                is_processing=True,
+            )
+            for link in data.links
+        ]
+        session.add_all(records)
+        session.commit()
+
+    job_id = str(uuid4())
+    future = EXECUTOR.submit(trigger_jobs_processing, data.installation_id)
+    JOBS[job_id] = future  # not really necessary
+
+    return jsonify({"status": "success", "links_received": len(data.links)})
+
+
+@app.route("/api/status", methods=["POST"])
+def status():
+    """
+    Checks if jobs are ready for the given installation_id.
+    Returns 200 if jobs are ready, 202 if still processing.
+    """
+    data = StatusRequest.model_validate(request.get_json())
+    logger.info(f"Status check from installation: {data.installation_id}")
+
+    with SessionLocal() as session:
+        has_processing_jobs = (
+            session.query(JobAnalysis)
+            .filter(
+                JobAnalysis.installation_id == data.installation_id,
+                JobAnalysis.is_processing == True,
+            )
+            .one_or_none()
+        )
+        if not has_processing_jobs:
+            job_count = (
+                session.query(JobAnalysis)
+                .filter(
+                    JobAnalysis.installation_id == data.installation_id,
+                    JobAnalysis.is_processed == False,
+                )
+                .count()
+            )
+            logger.info(f"Jobs are ready for installation: {data.installation_id}")
+            return jsonify({"status": "ready", "job_count": job_count}), 200
+        else:
+            logger.info(f"Jobs not ready yet for installation: {data.installation_id}")
+            return jsonify({"status": "processing"}), 202
+
+
+@app.route("/api/urls", methods=["POST"])
+def urls():
+    """
+    Returns a list of job application URLs for the given installation_id.
+    These are the URLs that the user should visit to apply for jobs.
+    """
+    data = UrlsRequest.model_validate(request.get_json())
+    logger.info(f"URLs request from installation: {data.installation_id}")
+
+    with SessionLocal() as session:
+        records = (
+            session.query(JobAnalysis)
+            .filter(
+                JobAnalysis.installation_id == data.installation_id,
+                JobAnalysis.is_processed == False,
+            )
+            .all()
+        )
+        job_urls = [record.link for record in records]
+
+        logger.info(
+            f"Returning {len(job_urls)} URLs for installation: {data.installation_id}"
+        )
+        return jsonify({"urls": job_urls})
 
 
 @app.route("/api/filler", methods=["POST"])
@@ -92,96 +202,6 @@ def analyze_page():
         ]
 
     return jsonify([action.model_dump(mode="json") for action in actions])
-
-
-@app.route("/api/install", methods=["POST"])
-def install():
-    """
-    Receives installation_id, resume, and preferences from the extension.
-    Returns a list of Google search URLs to scrape for job listings.
-    """
-    data = InstallRequest.model_validate(request.get_json())
-    logger.info(f"Install request from: {data.installation_id}")
-    
-    # TODO: Generate Google search queries based on resume and preferences
-    # For now, return some example Google job search URLs
-    # In a real implementation, this would use an LLM to generate relevant queries
-    
-    # Example URLs based on common job search patterns
-    search_urls = [
-        "https://www.google.com/search?q=software+engineer+jobs+remote",
-        "https://www.google.com/search?q=python+developer+jobs",
-        "https://www.google.com/search?q=full+stack+engineer+openings"
-    ]
-    
-    return jsonify({"urls": search_urls})
-
-
-@app.route("/api/listings", methods=["POST"])
-def listings():
-    """
-    Receives installation_id and links extracted from a Google search page.
-    Stores the links for processing.
-    """
-    data = ListingsRequest.model_validate(request.get_json())
-    logger.info(f"Received {len(data.links)} links from installation: {data.installation_id}")
-    
-    # TODO: Store links in database for processing
-    # For now, just log them
-    for link in data.links:
-        logger.info(f"  - {link}")
-    
-    return jsonify({"status": "success", "links_received": len(data.links)})
-
-
-@app.route("/api/status", methods=["POST"])
-def status():
-    """
-    Checks if jobs are ready for the given installation_id.
-    Returns 200 if jobs are ready, 202 if still processing.
-    """
-    data = StatusRequest.model_validate(request.get_json())
-    logger.info(f"Status check from installation: {data.installation_id}")
-    
-    # TODO: Check database for processed jobs for this installation_id
-    # For now, simulate that jobs are ready after some time
-    # In a real implementation, this would query the database to check
-    # if job analysis and application actions are ready
-    
-    with SessionLocal() as session:
-        # Check if there are any job postings with application actions
-        job_count = session.query(JobAnalysis).count()
-        
-        if job_count > 0:
-            # Jobs are ready
-            logger.info(f"Jobs are ready for installation: {data.installation_id}")
-            return jsonify({"status": "ready", "job_count": job_count}), 200
-        else:
-            # Still processing
-            logger.info(f"Jobs not ready yet for installation: {data.installation_id}")
-            return jsonify({"status": "processing"}), 202
-
-
-@app.route("/api/urls", methods=["POST"])
-def urls():
-    """
-    Returns a list of job application URLs for the given installation_id.
-    These are the URLs that the user should visit to apply for jobs.
-    """
-    data = UrlsRequest.model_validate(request.get_json())
-    logger.info(f"URLs request from installation: {data.installation_id}")
-    
-    # TODO: Retrieve job URLs from database for this installation_id
-    # For now, return example URLs
-    # In a real implementation, this would query JobAnalysis table
-    # and return the application URLs for jobs matching the user's preferences
-    
-    with SessionLocal() as session:
-        jobs = session.query(JobAnalysis).limit(10).all()
-        job_urls = [job.link for job in jobs if job.link]
-        
-        logger.info(f"Returning {len(job_urls)} URLs for installation: {data.installation_id}")
-        return jsonify({"urls": job_urls})
 
 
 if __name__ == "__main__":

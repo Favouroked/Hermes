@@ -1,39 +1,31 @@
 from typing import AsyncIterator, List, Optional
 
-import pyperclip
-from pydantic import BaseModel
-from sqlalchemy import and_
 from tqdm import tqdm
 
 from src.agents.lever import AgentAction, LeverAgent
 from src.config.logger import get_logger
 from src.db.model import (
     ApplicationActions,
-    ApplicationQuestions,
     JobAnalysis,
     SessionLocal,
 )
+from src.models.processors import LeverQuestion
 from src.processors.utils import clean_url
 from src.web.lever import LeverAutoBrowser, LeverBrowser
+import requests
+from bs4 import BeautifulSoup
 
 
-class LeverAnswer(BaseModel):
-    action: AgentAction
-    question_html: str
-
-
-class LeverQuestionProcessor:
-    def __init__(
-        self, agent: LeverAgent, limit: Optional[int] = None, show_browser: bool = False
-    ):
-        self.agent = agent
+class LeverProcessor:
+    def __init__(self, installation_id: str):
+        self._agent = LeverAgent()
         self._logger = get_logger(__name__)
-        self._limit = limit
-        self._headless_mode = not show_browser
+        self._installation_id = installation_id
+        self._headless_mode = True
 
     async def process_questions(
         self, link: str, page_text: str
-    ) -> AsyncIterator[LeverAnswer]:
+    ) -> AsyncIterator[LeverQuestion]:
         apply_link = clean_url(link)
         if not apply_link.endswith("/apply"):
             apply_link = f"{apply_link}/apply"
@@ -43,175 +35,69 @@ class LeverQuestionProcessor:
         self._logger.info(f"Found {len(questions_html)} questions")
         for question_html in tqdm(questions_html):
             try:
-                action = self.agent.generate_action(question_html, page_text)
-                yield LeverAnswer(action=action, question_html=question_html)
+                action = self._agent.generate_action(question_html, page_text)
+                yield LeverQuestion(action=action, question_html=question_html)
             except Exception:
                 self._logger.exception(
                     f"Error processing question:\n\n{question_html}.\n"
                 )
 
-    def get_postings(self) -> List[dict]:
+    async def process_job(self, job_data: dict):
+        link = job_data["link"]
+        job_id = job_data["id"]
+        if link.endswith("/apply"):
+            link = link[:-6]
+        r = requests.get(link)
+        soup = BeautifulSoup(r.text, "html.parser")
+        page_text = soup.get_text()
+        job_info = self._agent.generate_job_info(page_text)
         with SessionLocal() as session:
-            query = session.query(JobAnalysis).filter(
-                and_(
-                    JobAnalysis.title.notin_(["unprocessed", "unknown"]),
-                    JobAnalysis.is_processed == False,
-                    JobAnalysis.link.like(f"%lever%"),
-                    JobAnalysis.is_agent_processed == False,
-                )
+            session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
+                job_info.model_dump()
             )
-            if self._limit:
-                query = query.limit(self._limit)
-            records = query.all()
-            data_list = [
-                {
-                    "id": record.id,
-                    "link": record.link,
-                    "title": record.title,
-                    "page_text": record.page_text,
-                }
-                for record in records
-            ]
-            return data_list
-
-    @staticmethod
-    def save_action(posting_id: int, answer: LeverAnswer):
-        action = answer.action
-        with SessionLocal() as session:
-            record = ApplicationActions(
-                job_analysis_id=posting_id,
-                question_html=answer.question_html,
-                question_text=action.question_text,
-                answer_text=action.value,
-                action=action.action,
-                query_selector=action.query_selector,
-            )
-            session.add(record)
             session.commit()
 
-    @staticmethod
-    def update_posting(posting_id: int):
+        questions = [answer async for answer in self.process_questions(link, page_text)]
+
         with SessionLocal() as session:
-            session.query(JobAnalysis).filter(JobAnalysis.id == posting_id).update(
-                {"is_agent_processed": True}
+            db_actions = [
+                ApplicationActions(
+                    job_analysis_id=job_id,
+                    question_html=question.question_html,
+                    question_text=question.action.question_text,
+                    answer_text=question.action.value,
+                    action=question.action.action,
+                    query_selector=question.action.query_selector,
+                )
+                for question in questions
+            ]
+            session.add_all(db_actions)
+            session.commit()
+
+            session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
+                {"is_processing": False}
             )
             session.commit()
 
     async def process(self):
-        postings = self.get_postings()
-        self._logger.info(f"Processing {len(postings)} lever job postings")
-        for posting in postings:
-            link, page_text = posting["link"], posting["page_text"]
-            self._logger.info(f"Title: {posting['title']} | Link: {link}")
+        with SessionLocal() as session:
+            records = (
+                session.query(JobAnalysis)
+                .filter(
+                    JobAnalysis.installation_id == self._installation_id,
+                    JobAnalysis.title == "processing...",
+                )
+                .all()
+            )
+            data_list = [{"link": record.link, "id": record.id} for record in records]
+
+        for data in data_list:
             try:
-                async for answer in self.process_questions(link, page_text):
-                    try:
-                        self.save_action(posting["id"], answer)
-                    except Exception:
-                        self._logger.exception(f"Failed to save question {answer}")
-                self.update_posting(posting["id"])
+                await self.process_job(data)
             except Exception as e:
-                self._logger.exception(f"Failed to process posting [{link}]")
-
-
-class LeverAutoApply:
-    def __init__(self, limit: Optional[int] = None, show_browser: bool = False):
-        self._logger = get_logger(__name__)
-        self._limit = limit
-        self._headless_mode = not show_browser
-        self._show_browser = show_browser
-
-    def _retrieve_job_postings(self) -> List[dict]:
-        with SessionLocal() as session:
-            subquery = (
-                session.query(ApplicationQuestions)
-                .filter(ApplicationQuestions.job_analysis_id == JobAnalysis.id)
-                .exists()
-            )
-            query = session.query(JobAnalysis).filter(
-                and_(
-                    subquery,
-                    JobAnalysis.is_processed == False,
-                    JobAnalysis.expired == False,
-                    JobAnalysis.is_agent_processed == True,
-                )
-            )
-            if self._limit:
-                query = query.limit(self._limit)
-            records = query.all()
-            return [
-                {
-                    "id": record.id,
-                    "link": record.link,
-                    "title": record.title,
-                    "cover_letter": record.cover_letter,
-                }
-                for record in records
-            ]
-
-    @staticmethod
-    def _retrieve_job_questions(job_id: int) -> List[dict]:
-        with SessionLocal() as session:
-            query = session.query(ApplicationQuestions).filter(
-                ApplicationQuestions.job_analysis_id == job_id
-            )
-            records = query.all()
-            return [
-                {
-                    "id": record.id,
-                    "job_analysis_id": record.job_analysis_id,
-                    "question_html": record.question_html,
-                    "question_text": record.question_text,
-                    "answer_text": record.answer_text,
-                    "answer_execution_code": record.answer_execution_code,
-                    "created_at": record.created_at,
-                }
-                for record in records
-            ]
-
-    @staticmethod
-    def _update_job_posting(job_id: int, updates: dict):
-        with SessionLocal() as session:
-            session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(updates)
-            session.commit()
-
-    async def process(self):
-        job_postings = self._retrieve_job_postings()
-        self._logger.info(f"Found {len(job_postings)} lever job postings")
-        browser = LeverAutoBrowser(show_browser=self._show_browser)
-        await browser.create_browser()
-        for job_posting in job_postings:
-            try:
-                questions = self._retrieve_job_questions(job_posting["id"])
-                self._logger.info(
-                    f"Found {len(questions)} questions for job [{job_posting['id']}]: [{job_posting['title']}]"
-                )
-                link = job_posting["link"]
-
-                apply_link = clean_url(link)
-                if not apply_link.endswith("/apply"):
-                    await browser.new_page(apply_link)
-                    apply_link = f"{apply_link}/apply"
-                pyperclip.copy(job_posting["cover_letter"])
-                await browser.auto_apply(apply_link, questions)
-                print(
-                    "\n-----------------------------------------------------------------------------\n"
-                )
-                updates: dict = {"is_processed": True}
-                cmd = input("Enter command: ")
-                if "n" in cmd:
-                    notes = input("Enter notes: ")
-                    updates["notes"] = notes
-                if "r" in cmd:
-                    updates["is_processed"] = False
-                self._update_job_posting(job_posting["id"], updates)
-                print(
-                    "\n-----------------------------------------------------------------------------\n"
-                )
-                if "e" in cmd:
-                    break
-            except Exception as e:
-                self._logger.exception(
-                    f"Failed to process posting [{job_posting}]: {e}"
-                )
-        await browser.close_browser()
+                job_id = data["id"]
+                self._logger.exception(f"Job {job_id} Error: {e}")
+                with SessionLocal() as session:
+                    session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
+                        {"has_error": True}
+                    )

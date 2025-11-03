@@ -1,6 +1,3 @@
-
-
-
 def clean_url(url: str) -> str:
     from urllib.parse import urlsplit, urlunsplit
 
