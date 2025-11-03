@@ -11,9 +11,9 @@
     function isGoogleSearchPage() {
         const hostname = window.location.hostname;
         const pathname = window.location.pathname;
-        
-        return (hostname.includes('google.com') || hostname.includes('google.')) && 
-               (pathname === '/search' || window.location.search.includes('q='));
+
+        return (hostname.includes('google.com') || hostname.includes('google.')) &&
+            (pathname === '/search' || window.location.search.includes('q='));
     }
 
     // Check if captcha is present on the page
@@ -36,7 +36,7 @@
         }
 
         // Check if we're on the "sorry" page (unusual traffic detection)
-        if (window.location.pathname.includes('/sorry/') || 
+        if (window.location.pathname.includes('/sorry/') ||
             document.body.textContent.includes('unusual traffic') ||
             document.body.textContent.includes('automated queries')) {
             return true;
@@ -48,16 +48,16 @@
     // Extract all links from Google search results
     function extractSearchLinks() {
         const links = [];
-        
+
         // Google search result link selectors
         // Main search results
         const resultLinks = document.querySelectorAll('a[href]');
-        
+
         for (const link of resultLinks) {
             const href = link.href;
-            
+
             // Filter out Google's own links, navigation, etc.
-            if (href && 
+            if (href &&
                 !href.includes('google.com/search') &&
                 !href.includes('google.com/url') &&
                 !href.includes('webcache.googleusercontent.com') &&
@@ -67,13 +67,13 @@
                 !href.startsWith('javascript:') &&
                 !href.startsWith('#') &&
                 (href.startsWith('http://') || href.startsWith('https://'))) {
-                
+
                 // Check if this link is in a search result (has certain parent elements)
-                const parent = link.closest('div[data-sokoban-container]') || 
-                              link.closest('div.g') || 
-                              link.closest('div[class*="result"]') ||
-                              link.closest('div[jsname]');
-                
+                const parent = link.closest('div[data-sokoban-container]') ||
+                    link.closest('div.g') ||
+                    link.closest('div[class*="result"]') ||
+                    link.closest('div[jsname]');
+
                 if (parent && !links.includes(href)) {
                     links.push(href);
                 }
@@ -120,17 +120,17 @@
     // Monitor for captcha resolution
     function startCaptchaMonitoring() {
         console.log('Starting captcha monitoring...');
-        
+
         captchaCheckInterval = setInterval(() => {
             if (!isCaptchaPresent()) {
                 console.log('Captcha resolved!');
                 stopCaptchaMonitoring();
-                
+
                 // Notify background script
                 chrome.runtime.sendMessage({
                     action: 'captchaResolved'
                 });
-                
+
                 // Continue processing
                 processPage();
             }
@@ -159,12 +159,12 @@
             // Check if captcha is present
             if (isCaptchaPresent()) {
                 console.log('Captcha detected! Waiting for user to solve...');
-                
+
                 // Notify background script about captcha
                 chrome.runtime.sendMessage({
                     action: 'captchaDetected'
                 });
-                
+
                 // Start monitoring for captcha resolution
                 startCaptchaMonitoring();
                 return;
@@ -189,6 +189,7 @@
                         console.log('Links sent to background script');
                     }
                 });
+
             } else {
                 console.warn('No links found on the page');
                 // Still notify background that we're done (even with no links)
@@ -198,9 +199,31 @@
                 });
             }
 
+
+            // Get elements with class NKTSme and filter for YyVfkd
+            const elements = document.querySelectorAll('td.NKTSme');
+            const filteredElement = Array.from(elements).find(el => el.classList.contains('YyVfkd'));
+            const currentPage = filteredElement ? filteredElement.textContent : '';
+
+            // Limit to the first 5 pages
+            if (currentPage === '' || currentPage === '5') {
+                chrome.runtime.sendMessage({
+                    action: 'linksExtracted',
+                    links: [],
+                    submitLinks: true
+                });
+            } else {
+                // Click on next page link if present
+                const nextButton = document.getElementById('pnnext');
+                if (nextButton) {
+                    nextButton.click();
+                }
+            }
+
+
         } catch (error) {
             console.error('Error processing page:', error);
-            
+
             // Notify background of error (send empty links)
             chrome.runtime.sendMessage({
                 action: 'linksExtracted',
@@ -219,7 +242,7 @@
     // Call /api/filler and execute actions
     async function processJobApplicationPage(installationId) {
         console.log('Processing job application page...');
-        
+
         try {
             // Wait for page to fully load
             await waitForPageLoad();
@@ -328,7 +351,7 @@
         if (message.action === 'processJobPage') {
             console.log('Received processJobPage message with installation_id:', message.installationId);
             processJobApplicationPage(message.installationId);
-            sendResponse({ status: 'processing' });
+            sendResponse({status: 'processing'});
         }
         return true; // Keep message channel open for async response
     });

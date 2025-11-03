@@ -87,7 +87,9 @@ def listings():
                 is_processing=True,
             )
             for link in data.links
+            if "lever.co" in link
         ]
+        logger.info(f"Found {len(records)} lever analysis")
         session.add_all(records)
         session.commit()
 
@@ -147,6 +149,7 @@ def urls():
             .filter(
                 JobAnalysis.installation_id == data.installation_id,
                 JobAnalysis.is_processed == False,
+                JobAnalysis.has_error == False,
             )
             .all()
         )
