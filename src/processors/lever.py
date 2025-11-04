@@ -7,7 +7,12 @@ from tqdm import tqdm
 
 from src.agents.lever import AgentAction, LeverAgent
 from src.config.logger import get_logger
-from src.db.model import ApplicationActions, JobAnalysis, SessionLocal
+from src.db.model import (
+    ApplicationActions,
+    JobAnalysis,
+    SessionLocal,
+    InstalledExtensions,
+)
 from src.models.processors import LeverQuestion
 from src.processors.utils import clean_url
 from src.web.lever import LeverAutoBrowser, LeverBrowser
@@ -19,6 +24,22 @@ class LeverProcessor:
         self._logger = get_logger(__name__)
         self._installation_id = installation_id
         self._headless_mode = True
+        self._installation_data = self._get_installation_data()
+
+    def _get_installation_data(self):
+        with SessionLocal() as session:
+            record = (
+                session.query(InstalledExtensions)
+                .filter(InstalledExtensions.installation_id == self._installation_id)
+                .one_or_none()
+            )
+            if not record:
+                raise ValueError(f"{self._installation_id} not found in database")
+            return {
+                "installation_id": record.installation_id,
+                "resume": record.resume,
+                "preferences": record.preferences,
+            }
 
     async def process_questions(
         self, link: str, page_text: str
@@ -32,7 +53,13 @@ class LeverProcessor:
         self._logger.info(f"Found {len(questions_html)} questions")
         for question_html in tqdm(questions_html):
             try:
-                action = self._agent.generate_action(question_html, page_text)
+                resume, preferences = (
+                    self._installation_data["resume"],
+                    self._installation_data["preferences"],
+                )
+                action = self._agent.generate_action(
+                    question_html, page_text, resume, preferences
+                )
                 yield LeverQuestion(action=action, question_html=question_html)
             except Exception:
                 self._logger.exception(
@@ -42,9 +69,8 @@ class LeverProcessor:
     def _validate_lever_url(self, url: str) -> bool:
         try:
             parsed = urlparse(url)
-            parts = parsed.path.strip('/').split('/')
-            return (parsed.scheme == 'https' and
-                    len(parts) >= 2)
+            parts = parsed.path.strip("/").split("/")
+            return parsed.scheme == "https" and len(parts) >= 2
         except Exception:
             return False
 

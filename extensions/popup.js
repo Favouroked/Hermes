@@ -15,17 +15,23 @@
             document.getElementById('installationIdDisplay').textContent = installationId;
 
             // Check if already processing
-            const state = await chrome.storage.local.get(['isProcessing', 'isApplying', 'backendProcessing']);
-            if (state.isProcessing) {
+            const statusData = await checkJobStatus();
+
+            if (statusData.status === 'processing') {
                 showStatus('info', 'Job search is in progress...', 'Please wait while we process the search results.');
                 disableForm();
-            } else if (state.isApplying) {
-                showStatus('info', 'Application in progress...', 'Close the current tab to open the next job application.');
-                disableForm();
-            } else if (state.backendProcessing) {
-                // Check status from backend
-                await checkJobStatus();
+            } else if (statusData.status === 'ready') {
+                await chrome.storage.local.set({jobsReady: true});
+                showJobsReadyUI(statusData.job_count);
+                await chrome.storage.local.remove(['isProcessing']);
+            } else {
+                const state = await chrome.storage.local.get(['isApplying']);
+                if (state.isApplying) {
+                    showStatus('info', 'Application in progress...', 'Close the current tab to open the next job application.');
+                    disableForm();
+                }
             }
+
 
             // Setup event listeners
             document.getElementById('submitBtn').addEventListener('click', handleSubmit);
@@ -65,6 +71,8 @@
                     installation_id: installationId
                 })
             });
+
+            return await response.json()
 
             if (response.status === 200) {
                 // Jobs are ready

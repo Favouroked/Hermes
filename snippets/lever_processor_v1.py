@@ -5,8 +5,12 @@ from sqlalchemy import and_
 
 from src.agents.lever import LeverAgent
 from src.config.logger import get_logger
-from src.db.model import (ApplicationActions, ApplicationQuestions,
-                          JobAnalysis, SessionLocal)
+from src.db.model import (
+    ApplicationActions,
+    ApplicationQuestions,
+    JobAnalysis,
+    SessionLocal,
+)
 from src.models.processors import LeverQuestion
 from src.processors.utils import clean_url
 from src.web.lever import LeverAutoBrowser

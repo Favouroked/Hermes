@@ -10,11 +10,22 @@ from flask_cors import CORS
 
 from src.agents.lever import LeverAgent
 from src.config.logger import get_logger
-from src.db.model import (ApplicationActions, JobAnalysis,
-                          JobGoogleSearchQuery, SessionLocal)
+from src.db.model import (
+    ApplicationActions,
+    JobAnalysis,
+    JobGoogleSearchQuery,
+    SessionLocal,
+    InstalledExtensions,
+)
 from src.jobs.lever import execute as trigger_jobs_processing
-from src.models.api import (Action, ExtensionRequest, InstallRequest,
-                            ListingsRequest, StatusRequest, UrlsRequest)
+from src.models.api import (
+    Action,
+    ExtensionRequest,
+    InstallRequest,
+    ListingsRequest,
+    StatusRequest,
+    UrlsRequest,
+)
 from src.processors.utils import clean_url
 
 logger = get_logger(__name__)
@@ -43,6 +54,22 @@ def install():
     """
     installation_data = InstallRequest.model_validate(request.get_json())
     logger.info(f"Install request from: {installation_data.installation_id}")
+
+    with SessionLocal() as session:
+        record = (
+            session.query(InstalledExtensions)
+            .filter(InstalledExtensions.installation_id == installation_data.installation_id)
+            .one_or_none()
+        )
+        if record is None:
+            new_extension = InstalledExtensions(
+                installation_id=installation_data.installation_id,
+                resume=installation_data.resume,
+                preferences=installation_data.preferences,
+                openai_key=installation_data.openai_key,
+            )
+            session.add(new_extension)
+            session.commit()
 
     agent = LeverAgent()
 
@@ -110,23 +137,26 @@ def status():
     logger.info(f"Status check from installation: {data.installation_id}")
 
     with SessionLocal() as session:
-        has_processing_jobs = (
+        processing_jobs = (
             session.query(JobAnalysis)
             .filter(
                 JobAnalysis.installation_id == data.installation_id,
                 JobAnalysis.is_processing == True,
             )
-            .one_or_none()
+            .all()
         )
-        if not has_processing_jobs:
+        if len(processing_jobs) == 0:
             job_count = (
                 session.query(JobAnalysis)
                 .filter(
                     JobAnalysis.installation_id == data.installation_id,
                     JobAnalysis.is_processed == False,
+                    JobAnalysis.has_error == False,
                 )
                 .count()
             )
+            if job_count == 0:
+                return jsonify({"status": "none"}), 200
             logger.info(f"Jobs are ready for installation: {data.installation_id}")
             return jsonify({"status": "ready", "job_count": job_count}), 200
         else:

@@ -1,5 +1,14 @@
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Integer,
-                        String, Text, create_engine)
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 
@@ -72,6 +81,18 @@ class JobGoogleSearchQuery(Base):
     query = Column(Text, nullable=False)
     google_search_url = Column(Text, nullable=False)
 
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InstalledExtensions(Base):
+    __tablename__ = "installed_extensions"
+    id = Column(Integer, primary_key=True, index=True)
+    installation_id = Column(String(128), nullable=False)
+    resume = Column(Text, nullable=False)
+    preferences = Column(Text, nullable=False)
+    openai_key = Column(Text)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -154,7 +154,9 @@ class LeverBrowser(LeverAutoBrowser):
             "class": ".postings-btn template-btn-submit hex-color",
         }
         self._form_question_identifier = {"class": "application-question", "tag": "li"}
-        self._form_additional_information_identifier = {"class": "application-additional"}
+        self._form_additional_information_identifier = {
+            "class": "application-additional"
+        }
 
     async def open_and_get_form_html(self) -> str:
         """
@@ -200,7 +202,9 @@ class LeverBrowser(LeverAutoBrowser):
                 if "resume" not in element.get("class")
             ]
 
-        additional_info_selector = self._build_selector_from_identifier(self._form_additional_information_identifier)
+        additional_info_selector = self._build_selector_from_identifier(
+            self._form_additional_information_identifier
+        )
         additional_elements = soup.select(additional_info_selector)
         additional_questions = [str(elem) for elem in additional_elements]
         questions.extend(additional_questions)
