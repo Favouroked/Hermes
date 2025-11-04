@@ -105,6 +105,7 @@ def listings():
     logger.info(
         f"Received {len(data.links)} links from installation: {data.installation_id}"
     )
+    logger.info(data)
 
     with SessionLocal() as session:
         records = [
@@ -116,7 +117,7 @@ def listings():
                 is_processing=True,
             )
             for link in data.links
-            if "lever.co" in link
+            if "lever.co" in clean_url(link)
         ]
         logger.info(f"Found {len(records)} lever analysis")
         session.add_all(records)

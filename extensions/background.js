@@ -210,6 +210,9 @@ async function handleLinksExtracted(links, tabId, submitLinks) {
         jobSearchState.currentIndex++;
         await processNextUrl();
 
+        //     complete (for testing)
+        // await handleSearchComplete();
+
     } catch (error) {
         console.error('Error sending links to server:', error);
 
