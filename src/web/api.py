@@ -105,21 +105,38 @@ def listings():
     logger.info(
         f"Received {len(data.links)} links from installation: {data.installation_id}"
     )
-    logger.info(data)
+    _extracted_links = [clean_url(link) for link in data.links]
+    extracted_links = []
+    for link in _extracted_links:
+        if "lever.co" not in link:
+            continue
+        if link.endswith("/apply"):
+            link = link[:-6]
+        extracted_links.append(link)
+    logger.info(extracted_links)
 
     with SessionLocal() as session:
+        existing_links = [
+            record.link
+            for record in session.query(JobAnalysis)
+            .filter(
+                JobAnalysis.installation_id == data.installation_id,
+                JobAnalysis.link.in_(extracted_links),
+            )
+            .all()
+        ]
         records = [
             JobAnalysis(
-                link=clean_url(link),
+                link=link,
                 title="processing...",
                 expired=False,
                 installation_id=data.installation_id,
                 is_processing=True,
             )
-            for link in data.links
-            if "lever.co" in clean_url(link)
+            for link in extracted_links
+            if link not in existing_links
         ]
-        logger.info(f"Found {len(records)} lever analysis")
+        logger.info(f"Found {len(records)} new lever analysis")
         session.add_all(records)
         session.commit()
 
@@ -204,11 +221,16 @@ def urls():
             .all()
         )
         job_urls = [record.link for record in records]
+        formatted_urls = []
+        for url in job_urls:
+            if not url.endswith("/apply"):
+                url = url + "/apply"
+            formatted_urls.append(url)
 
         logger.info(
             f"Returning {len(job_urls)} URLs for installation: {data.installation_id}"
         )
-        return jsonify({"urls": job_urls})
+        return jsonify({"urls": formatted_urls})
 
 
 @app.route("/api/filler", methods=["POST"])

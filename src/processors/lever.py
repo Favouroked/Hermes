@@ -70,7 +70,11 @@ class LeverProcessor:
         try:
             parsed = urlparse(url)
             parts = parsed.path.strip("/").split("/")
-            return parsed.scheme == "https" and "lever.co" in parsed.netloc and len(parts) >= 2
+            return (
+                parsed.scheme == "https"
+                and "lever.co" in parsed.netloc
+                and len(parts) >= 2
+            )
         except Exception:
             return False
 
@@ -85,14 +89,21 @@ class LeverProcessor:
 
         r = requests.get(link)
 
+        r.raise_for_status()
+
         soup = BeautifulSoup(r.text, "html.parser")
         page_text = soup.get_text()
         job_info = self._agent.generate_job_info(page_text)
+        is_unknown = job_info.title.lower() == "unknown"
         with SessionLocal() as session:
-            session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
-                job_info.model_dump()
-            )
+            updates = job_info.model_dump()
+            if is_unknown:
+                updates["is_processing"] = False
+            session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(updates)
             session.commit()
+
+        if is_unknown:
+            return
 
         questions = [answer async for answer in self.process_questions(link, page_text)]
 
@@ -136,5 +147,5 @@ class LeverProcessor:
                 self._logger.exception(f"Job [{data}] Error: {e}")
                 with SessionLocal() as session:
                     session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
-                        {"has_error": True}
+                        {"has_error": True, "is_processing": False}
                     )
