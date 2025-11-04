@@ -24,6 +24,19 @@
                 await chrome.storage.local.set({jobsReady: true});
                 showJobsReadyUI(statusData.job_count);
                 await chrome.storage.local.remove(['isProcessing']);
+            } else if (statusData.status === 'google') {
+                disableForm()
+                showStatus('success', 'Success!', `Received ${statusData.urls.length} search queries. Opening tabs...`);
+
+                // Mark as processing
+                await chrome.storage.local.set({isProcessing: true});
+
+                // Send URLs to background script for processing
+                chrome.runtime.sendMessage({
+                    action: 'startJobSearch',
+                    urls: statusData.urls,
+                    installationId: installationId
+                });
             } else {
                 const state = await chrome.storage.local.get(['isApplying']);
                 if (state.isApplying) {

@@ -164,11 +164,11 @@ async function processNextUrl() {
 
     } catch (error) {
         console.error('Error opening tab:', error);
-    } finally {
         // Continue with next URL even if this one failed
         jobSearchState.currentIndex++;
         await processNextUrl();
     }
+
 }
 
 // Handle links extracted from a Google search page

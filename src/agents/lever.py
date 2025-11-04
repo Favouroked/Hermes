@@ -20,7 +20,7 @@ class LeverAgent:
         self._model_name = models[2]
         self._logger = get_logger(__name__)
         self._log_response = True
-    
+
     def _call_ollama(self, payload) -> str:
         start_time = time.time()
         self._logger.info("Starting Ollama API request")
@@ -29,7 +29,9 @@ class LeverAgent:
         )
         resp.raise_for_status()
         data = resp.json()
-        self._logger.info(f"Ollama API request completed in {time.time() - start_time:.2f}s")
+        self._logger.info(
+            f"Ollama API request completed in {time.time() - start_time:.2f}s"
+        )
         raw = data.get("response", "").strip()
         if self._log_response:
             self._logger.info("--------------- Ollama API response ---------------")
@@ -51,7 +53,10 @@ class LeverAgent:
             "model": self._model_name,
             "prompt": prompt,
             "system": GOOGLE_SEARCH_PROMPT,
-            "format": {"type": "array", "items": JobGoogleSearchQuery.model_json_schema(mode='serialization')},
+            "format": {
+                "type": "array",
+                "items": JobGoogleSearchQuery.model_json_schema(mode="serialization"),
+            },
             # instruct Ollama to return JSON matching schema
             "stream": False,
             "options": {

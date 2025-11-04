@@ -217,6 +217,12 @@
                 const nextButton = document.getElementById('pnnext');
                 if (nextButton) {
                     nextButton.click();
+                } else {
+                    chrome.runtime.sendMessage({
+                    action: 'linksExtracted',
+                    links: [],
+                    submitLinks: true
+                });
                 }
             }
 

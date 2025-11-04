@@ -58,7 +58,9 @@ def install():
     with SessionLocal() as session:
         record = (
             session.query(InstalledExtensions)
-            .filter(InstalledExtensions.installation_id == installation_data.installation_id)
+            .filter(
+                InstalledExtensions.installation_id == installation_data.installation_id
+            )
             .one_or_none()
         )
         if record is None:
@@ -156,7 +158,24 @@ def status():
                 .count()
             )
             if job_count == 0:
-                return jsonify({"status": "none"}), 200
+                # check google searches
+                google_data_records = (
+                    session.query(JobGoogleSearchQuery)
+                    .filter(
+                        JobGoogleSearchQuery.installation_id == data.installation_id
+                    )
+                    .all()
+                )
+                if len(google_data_records) == 0:
+                    return jsonify({"status": "none"}), 200
+                return jsonify(
+                    {
+                        "status": "google",
+                        "urls": [
+                            record.google_search_url for record in google_data_records
+                        ],
+                    }
+                )
             logger.info(f"Jobs are ready for installation: {data.installation_id}")
             return jsonify({"status": "ready", "job_count": job_count}), 200
         else:

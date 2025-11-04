@@ -70,7 +70,7 @@ class LeverProcessor:
         try:
             parsed = urlparse(url)
             parts = parsed.path.strip("/").split("/")
-            return parsed.scheme == "https" and len(parts) >= 2
+            return parsed.scheme == "https" and "lever.co" in parsed.netloc and len(parts) >= 2
         except Exception:
             return False
 
@@ -133,7 +133,7 @@ class LeverProcessor:
                 await self.process_job(data)
             except Exception as e:
                 job_id = data["id"]
-                self._logger.exception(f"Job {job_id} Error: {e}")
+                self._logger.exception(f"Job [{data}] Error: {e}")
                 with SessionLocal() as session:
                     session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
                         {"has_error": True}
