@@ -107,19 +107,13 @@
 
     // Show UI when jobs are ready
     function showJobsReadyUI(jobCount) {
-        const state = chrome.storage.local.get(['isProcessing', 'isApplying']);
-        state.then(s => {
-            if (!s.isProcessing && !s.isApplying) {
-                // Create and show "Start Applying" button
-                const applyBtn = document.getElementById('applyBtn');
-                if (applyBtn) {
-                    applyBtn.style.display = 'block';
-                    applyBtn.addEventListener('click', handleStartApplying);
-                }
-                disableForm();
-                showStatus('success', 'Jobs Ready!', `${jobCount} job applications are ready. Click "Start Applying" to begin.`);
-            }
-        });
+        const applyBtn = document.getElementById('applyBtn');
+        if (applyBtn) {
+            applyBtn.style.display = 'block';
+            applyBtn.addEventListener('click', handleStartApplying);
+        }
+        disableForm();
+        showStatus('success', 'Jobs Ready!', `${jobCount} job applications are ready. Click "Start Applying" to begin.`);
     }
 
     // Handle start applying button click

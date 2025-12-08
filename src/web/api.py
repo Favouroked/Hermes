@@ -27,6 +27,9 @@ from src.models.api import (
     UrlsRequest,
 )
 from src.processors.utils import clean_url
+from dotenv import load_dotenv
+
+load_dotenv('.env')
 
 logger = get_logger(__name__)
 

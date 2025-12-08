@@ -340,12 +340,11 @@
                 } else {
                     console.warn(`Action ${i + 1} failed to execute`);
                 }
-
-                // Add small delay between actions
-                await new Promise(resolve => setTimeout(resolve, 500));
-
             } catch (error) {
-                console.error(`Error executing action ${i + 1}:`, error);
+                console.log(`Error executing action ${i + 1}:`, error);
+            } finally {
+                // Add small delay between actions
+                // await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
 
@@ -356,7 +355,7 @@
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'processJobPage') {
             console.log('Received processJobPage message with installation_id:', message.installationId);
-            processJobApplicationPage(message.installationId);
+            executeActions(message.jobActions);
             sendResponse({status: 'processing'});
         }
         return true; // Keep message channel open for async response

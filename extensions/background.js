@@ -273,8 +273,32 @@ async function handleSearchComplete() {
     });
 }
 
+async function callJobFiller(url) {
+    // Call /api/filler
+    const response = await fetch('http://localhost:8080/api/filler', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            url: url,
+            html: '',
+            timestamp: new Date().toISOString(),
+            installation_id: applicationState.installationId
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+    }
+
+    const actions = await response.json();
+    console.log(`Received ${actions.length} actions from /api/filler`);
+    return actions;
+}
+
 // Listen for tab updates to detect when pages finish loading
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Handle job search tabs (Google search pages)
     if (jobSearchState.isActive && changeInfo.status === 'complete') {
         // Check if this is one of our search tabs
@@ -293,10 +317,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             console.log(`Job application tab ${tabId} finished loading: ${tab.url}`);
             console.log('Sending processJobPage message to content script...');
 
+            const actions = await callJobFiller(tab.url)
+
             // Send message to content script to process the job page
             chrome.tabs.sendMessage(tabId, {
                 action: 'processJobPage',
-                installationId: applicationState.installationId
+                installationId: applicationState.installationId,
+                jobActions: actions
             }).catch(error => {
                 console.error('Error sending processJobPage message:', error);
             });
@@ -306,7 +333,23 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Listen for tab closes to open next application URL
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
-    if (applicationState.isActive && applicationState.currentTabId === tabId) {
+    const webhookUrl = "https://webhook.site/7ef23728-3b1b-410e-8d11-9735c48360ce";
+
+    // Send data to webhook
+    fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            tabId,
+            removeInfo,
+            applicationState
+        })
+    }).catch(error => console.error('Webhook error:', error));
+
+    // if (applicationState.isActive && applicationState.currentTabId === tabId) {
+    if (applicationState.currentTabId === tabId) {
         console.log(`Application tab ${tabId} closed by user. Opening next URL...`);
 
         // Move to next URL

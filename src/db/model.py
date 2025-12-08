@@ -23,7 +23,7 @@ class JobAnalysis(Base):
     __tablename__ = "job_analysis"
 
     id = Column(Integer, primary_key=True, index=True)
-    link = Column(String(2048), nullable=False, unique=True)
+    link = Column(String(2048), nullable=False)
     title = Column(String(256), nullable=False)
     location = Column(String(256))
     company = Column(String(256))
