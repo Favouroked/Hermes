@@ -56,3 +56,5 @@ instance/
 .coverage
 htmlcov/
 data/
+
+*.db

@@ -11,14 +11,43 @@ let jobSearchState = {
     completedUrls: []
 };
 
-// Job application state (for sequential manual application)
-let applicationState = {
-    isActive: false,
-    urls: [],
-    currentIndex: 0,
-    installationId: null,
-    currentTabId: null
-};
+// Storage helpers for persisting application state
+const APPLICATION_STATE_KEY = 'applicationState';
+
+function getDefaultApplicationState() {
+    return {
+        isActive: false,
+        urls: [],
+        currentIndex: 0,
+        installationId: null,
+        currentTabId: null,
+    };
+}
+
+async function loadApplicationStateFromStorage() {
+    try {
+        const result = await chrome.storage.local.get([APPLICATION_STATE_KEY]);
+        const stored = result && result[APPLICATION_STATE_KEY];
+        if (stored && typeof stored === 'object') {
+            // Merge with defaults to avoid missing fields
+            const applicationState = {...getDefaultApplicationState(), ...stored};
+            console.log('Loaded applicationState from storage:', applicationState);
+            return applicationState;
+        }
+    } catch (e) {
+        console.warn('Failed to load applicationState from storage:', e);
+    }
+}
+
+async function saveApplicationStateToStorage(newState) {
+    try {
+        await chrome.storage.local.set({[APPLICATION_STATE_KEY]: newState});
+        // Optional: log for debugging
+        // console.log('Saved applicationState to storage');
+    } catch (e) {
+        console.warn('Failed to save applicationState to storage:', e);
+    }
+}
 
 // Listen for messages from popup and content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -56,7 +85,7 @@ async function handleStartJobSearch(urls, installationId) {
 async function handleStartApplying(urls, installationId) {
     console.log('Starting job applications with', urls.length, 'URLs');
 
-    applicationState = {
+    const applicationState = {
         isActive: true,
         urls: urls,
         currentIndex: 0,
@@ -64,12 +93,16 @@ async function handleStartApplying(urls, installationId) {
         currentTabId: null
     };
 
+    // Persist application state
+    await saveApplicationStateToStorage(applicationState);
+
     // Open first URL
     await openNextApplicationUrl();
 }
 
 // Open the next application URL
 async function openNextApplicationUrl() {
+    const applicationState = await loadApplicationStateFromStorage();
     if (applicationState.currentIndex >= applicationState.urls.length) {
         // All URLs processed
         await handleApplicationComplete();
@@ -97,10 +130,14 @@ async function openNextApplicationUrl() {
         applicationState.currentTabId = tab.id;
         console.log(`Opened tab ${tab.id}. Waiting for user to close it...`);
 
+        // Persist application state
+        await saveApplicationStateToStorage(applicationState);
+
     } catch (error) {
         console.error('Error opening application tab:', error);
         // Continue with next URL even if this one failed
         applicationState.currentIndex++;
+        await saveApplicationStateToStorage(applicationState);
         await openNextApplicationUrl();
     }
 }
@@ -113,6 +150,8 @@ async function handleApplicationComplete() {
 
     // Clear applying state
     await chrome.storage.local.remove(['isApplying']);
+    // Remove persisted application state (completed)
+    await chrome.storage.local.remove([APPLICATION_STATE_KEY]);
 
     // Notify popup
     chrome.runtime.sendMessage({
@@ -273,7 +312,7 @@ async function handleSearchComplete() {
     });
 }
 
-async function callJobFiller(url) {
+async function callJobFiller(url, installationId) {
     // Call /api/filler
     const response = await fetch('http://localhost:8080/api/filler', {
         method: 'POST',
@@ -284,7 +323,7 @@ async function callJobFiller(url) {
             url: url,
             html: '',
             timestamp: new Date().toISOString(),
-            installation_id: applicationState.installationId
+            installation_id: installationId
         })
     });
 
@@ -295,6 +334,20 @@ async function callJobFiller(url) {
     const actions = await response.json();
     console.log(`Received ${actions.length} actions from /api/filler`);
     return actions;
+}
+
+async function markJobProcessed(url, installationId) {
+    await fetch('http://localhost:8080/api/job-processed', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            url: url,
+            timestamp: new Date().toISOString(),
+            installation_id: installationId
+        })
+    });
 }
 
 // Listen for tab updates to detect when pages finish loading
@@ -311,13 +364,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
 
     // Handle job application tabs
+    const applicationState = await loadApplicationStateFromStorage();
     if (applicationState.isActive && changeInfo.status === 'complete') {
         // Check if this is the current application tab
         if (applicationState.currentTabId === tabId) {
             console.log(`Job application tab ${tabId} finished loading: ${tab.url}`);
             console.log('Sending processJobPage message to content script...');
 
-            const actions = await callJobFiller(tab.url)
+            const actions = await callJobFiller(tab.url, applicationState.installationId)
 
             // Send message to content script to process the job page
             chrome.tabs.sendMessage(tabId, {
@@ -332,29 +386,22 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 });
 
 // Listen for tab closes to open next application URL
-chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
-    const webhookUrl = "https://webhook.site/7ef23728-3b1b-410e-8d11-9735c48360ce";
-
-    // Send data to webhook
-    fetch(webhookUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            tabId,
-            removeInfo,
-            applicationState
-        })
-    }).catch(error => console.error('Webhook error:', error));
+chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
+    const applicationState = await loadApplicationStateFromStorage();
 
     // if (applicationState.isActive && applicationState.currentTabId === tabId) {
     if (applicationState.currentTabId === tabId) {
+        const currentUrl = applicationState.urls[applicationState.currentIndex];
+        const installationId = applicationState.installationId;
+        await markJobProcessed(currentUrl, installationId);
         console.log(`Application tab ${tabId} closed by user. Opening next URL...`);
 
         // Move to next URL
         applicationState.currentIndex++;
         applicationState.currentTabId = null;
+
+        // Persist application state
+        await saveApplicationStateToStorage(applicationState);
 
         // Open next URL after a short delay
         setTimeout(() => {
@@ -362,6 +409,7 @@ chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
         }, 500);
     }
 });
+
 
 // Handle extension installation
 chrome.runtime.onInstalled.addListener((details) => {

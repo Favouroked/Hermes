@@ -253,6 +253,8 @@ def analyze_page():
             .all()
         )
         logger.info(f"Found {len(matched_job_postings)} postings")
+        if len(matched_job_postings) == 0:
+            return jsonify([])
         job_posting = matched_job_postings[0]
         db_actions = (
             session.query(ApplicationActions)
@@ -272,6 +274,22 @@ def analyze_page():
         ]
 
     return jsonify([action.model_dump(mode="json") for action in actions])
+
+@app.route("/api/job-processed", methods=["PUT"])
+def mark_job_as_processed():
+    data = request.get_json()
+    logger.info(f"Marking job as processed: {data}")
+    link = clean_url(data['url'])
+    if link.endswith("/apply"):
+        link = link[:-6]
+
+
+    with SessionLocal() as session:
+        session.query(JobAnalysis).filter(JobAnalysis.link.like(f"%{link}%")).update({"is_processed": True})
+        session.commit()
+
+    return jsonify({"status": "ok"}), 200
+
 
 
 def shutdown_pool_immediately():
