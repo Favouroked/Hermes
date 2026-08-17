@@ -16,7 +16,7 @@ from src.db.model import (
 from src.models.processors import Question
 from src.models.agents import AgentAction, JobGoogleSearchQuery
 from src.processors.utils import clean_url
-from src.web.lever import LeverBrowser
+from src.web.factory import BrowserFactory
 
 
 class ProcessingCancelled(Exception):
@@ -67,10 +67,13 @@ class Processor:
     async def process_questions(
         self, link: str, page_text: str, stop_event=None
     ) -> AsyncIterator[Question]:
-        apply_link = clean_url(link)
-        if not apply_link.endswith("/apply"):
-            apply_link = f"{apply_link}/apply"
-        extractor = LeverBrowser(apply_link, headless=self._headless_mode)
+        cleaned_link = clean_url(link)
+        extractor = BrowserFactory.get_browser(
+            cleaned_link, headless=self._headless_mode
+        )
+        if extractor is None:
+            self._logger.info(f"No browser available for link: {link}")
+            return
         form_html = await extractor.open_and_get_form_html()
         questions_html = extractor.get_questions_html(form_html)
         self._logger.info(f"Found {len(questions_html)} questions")
