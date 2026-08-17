@@ -18,7 +18,7 @@ class JobGoogleSearchQuery(BaseModel):
         google_search_url: The complete, encoded URL for the Google search
     """
 
-    site: Literal["lever"] = Field(..., description="Target job board/site")
+    site: Literal["lever", "greenhouse", "ashbyhq", "myworkdayjobs", "smartrecruiters", "jobvite"] = Field(..., description="Target job board/site")
     role_focus: str = Field(..., description="Role title/focus description")
     filters: dict = Field(..., description="Filter options")
     query: str = Field(..., description="Raw Google search query string")

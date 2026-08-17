@@ -15,46 +15,15 @@ from src.models.api import InstallRequest
 from pathlib import Path
 import os
 
-def use_cached_google_searches(
-    env_var: str = "USE_CACHED_GOOGLE_SEARCHES",
-    cache_path: Path | None = None,
-):
-    """
-    Decorator for LeverAgent.generate_google_searches that, when the given
-    environment variable is set, returns cached results from data/searches_1.json
-    instead of calling Ollama.
-
-    The JSON file is expected to contain an array of objects compatible with
-    JobGoogleSearchQuery.
-    """
-    if cache_path is None:
-        # src/processors/lever.py -> project root is parents[2]
-        default_cache_path = Path(__file__).resolve().parents[2] / "data" / "searches_1.json"
-    else:
-        default_cache_path = cache_path
-
-    def decorator(func):
-        def wrapper(self, *args, **kwargs):
-            if os.getenv(env_var):
-                # Optional logging if logger is present on self
-                logger = getattr(self, "_logger", None)
-                if logger:
-                    logger.info(
-                        "Using cached google searches from %s due to %s being set",
-                        default_cache_path,
-                        env_var,
-                    )
-
-                with default_cache_path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                return [JobGoogleSearchQuery.model_validate(item) for item in data]
-
-            return func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
+ALLOWED_CAREER_DOMAINS = (
+    "boards.greenhouse.io",
+    "job-boards.greenhouse.io",
+    "jobs.lever.co",
+    "jobs.ashbyhq.com",
+    "myworkdayjobs.com",
+    "jobs.smartrecruiters.com",
+    "jobs.jobvite.com",
+)
 
 
 class LeverAgent:
@@ -82,7 +51,6 @@ class LeverAgent:
             self._logger.info("---------------------------------------------------")
         return raw
 
-    @use_cached_google_searches()
     def generate_google_searches(
         self, payload: InstallRequest
     ) -> List[JobGoogleSearchQuery]:
@@ -109,6 +77,7 @@ class LeverAgent:
         }
         raw = self._call_ollama(payload)
         json_raw = json.loads(raw)
+        # note: query = f"{query} after:{cutoff_date.isoformat()}" for cutoff
         return [JobGoogleSearchQuery.model_validate(r) for r in json_raw]
 
     def generate_job_info(self, page_text: str) -> JobDetails:
