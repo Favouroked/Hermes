@@ -50,6 +50,14 @@ def _cutoff_url(url: str, cutoff_date: str) -> str:
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     raw = query.get("q", "")
     raw = re.sub(r"(?<!\S)after:\d{4}-\d{2}-\d{2}\b", "", raw, flags=re.IGNORECASE)
+
+    # Convert "- intern" to "-intern", "- internship" to "-internship", etc.
+    raw = re.sub(
+        r"(?<!\S)-\s+(?=\S)",
+        "-",
+        raw,
+    )
+
     raw = re.sub(r"\s+", " ", raw).strip()
     raw = f"{raw} after:{cutoff_date}".strip()
     query["q"] = raw
