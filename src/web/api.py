@@ -120,8 +120,6 @@ def listings():
     _extracted_links = [clean_url(link) for link in data.links]
     extracted_links = []
     for link in _extracted_links:
-        if "lever.co" not in link:
-            continue
         if link.endswith("/apply"):
             link = link[:-6]
         extracted_links.append(link)

@@ -26,19 +26,24 @@ source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
-3) Start the backend server (port 8080)
+3) Initialize the database schema
+```bash
+alembic upgrade head
+```
+
+4) Start the backend server (port 8080)
 ```bash
 python src/web/api.py
 ```
 You should see logs and be able to GET http://localhost:8080/ (returns `{ "online": true }`). CORS is enabled for the extension.
 
-4) Load the Chrome extension
+5) Load the Chrome extension
 - Open Chrome and go to `chrome://extensions/`
 - Enable “Developer mode” (top‑right toggle)
 - Click “Load unpacked” and select the `extensions` folder from this repo
 - Pin the extension if desired
 
-5) Use the extension
+6) Use the extension
 - Click the extension icon to open the popup
 - Paste your Resume text and Job Preferences
 - Click “Start Job Search” and follow the guidance in the popup
@@ -104,6 +109,7 @@ python src/web/api.py
 - `extensions/background.js` — opens tabs, orchestrates search/apply flows
 - `extensions/content.js` — extracts links on Google, executes form‑fill actions
 - `src/web/api.py` — Flask API
+- `migrations/` — Alembic database migrations
 - `src/jobs/` and `src/processors/` — link/job processing pipeline
 - `jobs_analyzer.db` — SQLite database file created at runtime
 
