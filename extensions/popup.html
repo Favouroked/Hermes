@@ -89,9 +89,18 @@
       min-height: 120px;
     }
 
-    #preferencesText {
-      min-height: 80px;
-    }
+      #preferencesText {
+        min-height: 80px;
+      }
+
+      select, input[type="password"] {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: inherit;
+      }
 
     .button-container {
       margin-top: 20px;
@@ -203,6 +212,19 @@
       <div class="form-group">
         <label class="form-label" for="preferencesText">Job Preferences</label>
         <textarea id="preferencesText" placeholder="Enter your job preferences (e.g., remote positions, full-time, specific technologies, salary expectations...)"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="llmProvider">LLM Provider</label>
+        <select id="llmProvider">
+          <option value="ollama">Ollama (local)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="openaiKeyGroup" style="display: none;">
+        <label class="form-label" for="openaiKey">OpenAI API Key</label>
+        <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-...">
       </div>
 
       <div class="button-container">

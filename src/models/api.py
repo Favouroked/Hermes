@@ -21,6 +21,7 @@ class InstallRequest(BaseModel):
     resume: str
     preferences: str
     openai_key: Optional[str] = None
+    llm_provider: Literal["ollama", "openai"] = "ollama"
 
 
 class ListingsRequest(BaseModel):

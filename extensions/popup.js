@@ -46,7 +46,10 @@
             }
 
 
-            // Setup event listeners
+    // Setup event listeners
+            const providerSelect = document.getElementById('llmProvider');
+            providerSelect.addEventListener('change', updateProviderFields);
+            updateProviderFields();
             document.getElementById('submitBtn').addEventListener('click', handleSubmit);
 
             // Listen for messages from background script
@@ -56,6 +59,12 @@
             console.error('Error initializing popup:', error);
             showStatus('error', 'Initialization Error', error.message);
         }
+    }
+
+    function updateProviderFields() {
+        const provider = document.getElementById('llmProvider').value;
+        document.getElementById('openaiKeyGroup').style.display =
+            provider === 'openai' ? 'block' : 'none';
     }
 
     // Get or create a unique installation ID
@@ -170,6 +179,8 @@
     async function handleSubmit() {
         const resumeText = document.getElementById('resumeText').value.trim();
         const preferencesText = document.getElementById('preferencesText').value.trim();
+        const llmProvider = document.getElementById('llmProvider').value;
+        const openaiKey = document.getElementById('openaiKey').value.trim();
 
         // Validate inputs
         if (!resumeText) {
@@ -179,6 +190,11 @@
 
         if (!preferencesText) {
             showStatus('error', 'Validation Error', 'Please enter your job preferences.');
+            return;
+        }
+
+        if (llmProvider === 'openai' && !openaiKey) {
+            showStatus('error', 'Validation Error', 'Please enter an OpenAI API key.');
             return;
         }
 
@@ -196,7 +212,9 @@
                 body: JSON.stringify({
                     installation_id: installationId,
                     resume: resumeText,
-                    preferences: preferencesText
+                    preferences: preferencesText,
+                    llm_provider: llmProvider,
+                    openai_key: llmProvider === 'openai' ? openaiKey : null
                 })
             });
 

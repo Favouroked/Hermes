@@ -56,7 +56,7 @@ This reflects the current codebase behavior.
 - `GET /` → `{ "online": true }`
 
 - `POST /api/install`
-  - Body: `{ installation_id, resume, preferences, openai_key? }`
+  - Body: `{ installation_id, resume, preferences, llm_provider?, openai_key? }`
   - Returns: `{ urls: string[] }` (Google search URLs)
 
 - `POST /api/listings`
@@ -86,5 +86,7 @@ This reflects the current codebase behavior.
 ---
 
 ## Notes on LLMs (OpenAI vs Local)
-- The API accepts an optional `openai_key` in `/api/install` and stores it per installation. The current popup UI doesn’t expose this field yet; you can extend `popup.js` to include it if desired.
-- You can configure a local LLaMA path. If you integrate a local model, point the backend agents/processors to that runtime and skip passing an OpenAI key from the extension.
+- `/api/install` accepts `llm_provider` (`ollama` or `openai`) and an optional `openai_key`, and stores them per installation so background processing uses the same provider.
+- Ollama remains the default. Its model and endpoint can be configured with `OLLAMA_MODEL` and `OLLAMA_BASE_URL`.
+- OpenAI uses `OPENAI_MODEL` (default `gpt-4o-mini`) and prefers the installation key, falling back to `OPENAI_API_KEY`.
+- The extension exposes the provider selector and OpenAI key field; the key is sent only to the local backend over the existing API connection.

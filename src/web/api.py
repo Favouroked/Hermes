@@ -72,11 +72,20 @@ def install():
                 resume=installation_data.resume,
                 preferences=installation_data.preferences,
                 openai_key=installation_data.openai_key,
+                llm_provider=installation_data.llm_provider,
             )
             session.add(new_extension)
-            session.commit()
+        else:
+            record.resume = installation_data.resume
+            record.preferences = installation_data.preferences
+            record.openai_key = installation_data.openai_key
+            record.llm_provider = installation_data.llm_provider
+        session.commit()
 
-    agent = LeverAgent()
+    agent = LeverAgent(
+        provider=installation_data.llm_provider,
+        openai_key=installation_data.openai_key,
+    )
 
     search_data = agent.generate_google_searches(installation_data)
 

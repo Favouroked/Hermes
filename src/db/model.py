@@ -93,9 +93,29 @@ class InstalledExtensions(Base):
     resume = Column(Text, nullable=False)
     preferences = Column(Text, nullable=False)
     openai_key = Column(Text)
+    llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_schema():
+    """Apply additive SQLite changes for databases created by older Hermes versions."""
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.exec_driver_sql(
+                "PRAGMA table_info(installed_extensions)"
+            ).fetchall()
+        }
+        if "llm_provider" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE installed_extensions "
+                "ADD COLUMN llm_provider VARCHAR(32) NOT NULL DEFAULT 'ollama'"
+            )
+
+
+ensure_schema()

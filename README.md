@@ -61,8 +61,11 @@ python src/web/api.py
 
 ### Environment
 - The server loads `.env` if present (`dotenv.load_dotenv('.env')`).
-- No variables are strictly required for the basic flow.
-- If you plan to extend LLM usage on the server, you may add vars like `OPENAI_API_KEY` to `.env` and wire them into agents.
+- Ollama is the default provider and must be running at `http://localhost:11434`.
+- Optional environment settings are `LLM_PROVIDER`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, and `OPENAI_MODEL`.
+- OpenAI can be selected in the extension with a per-installation API key. If using the API directly, send `llm_provider: "openai"` and `openai_key` to `/api/install`.
+- `OPENAI_API_KEY` can be used as a server-side fallback for OpenAI requests.
+- API keys are stored with the installation record; use a protected local database and do not commit `.env` or database files.
 
 ---
 

@@ -1,8 +1,6 @@
 import json
-import time
-from typing import List, Literal, Optional
-
-import requests
+import os
+from typing import List
 
 from src.config.logger import get_logger
 from src.config.prompts import (
@@ -10,91 +8,56 @@ from src.config.prompts import (
     GOOGLE_SEARCH_PROMPT,
     JOB_ANALYSIS_SYSTEM_PROMPT,
 )
+from src.llm.providers import LLMProvider, OpenAIProvider, OllamaProvider
 from src.models.agents import AgentAction, JobDetails, JobGoogleSearchQuery
 from src.models.api import InstallRequest
-from pathlib import Path
-import os
+from pydantic import BaseModel, Field
 
-ALLOWED_CAREER_DOMAINS = (
-    "boards.greenhouse.io",
-    "job-boards.greenhouse.io",
-    "jobs.lever.co",
-    "jobs.ashbyhq.com",
-    "myworkdayjobs.com",
-    "jobs.smartrecruiters.com",
-    "jobs.jobvite.com",
-)
+
+class SearchQueries(BaseModel):
+    items: List[JobGoogleSearchQuery] = Field(..., description="Generated job searches")
 
 
 class LeverAgent:
-    def __init__(self):
-        models = ["gpt-oss:20b", "gemma3:12b", "qwen3:14b"]
-        self._model_name = models[2]
+    def __init__(self, provider: str | None = None, openai_key: str | None = None):
+        provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
+        if provider == "ollama":
+            self._provider: LLMProvider = OllamaProvider()
+        elif provider == "openai":
+            self._provider = OpenAIProvider(api_key=openai_key)
+        else:
+            raise ValueError(f"Unsupported LLM provider: {provider}")
+        self._provider_name = provider
         self._logger = get_logger(__name__)
-        self._log_response = True
 
-    def _call_ollama(self, payload) -> str:
-        start_time = time.time()
-        self._logger.info("Starting Ollama API request")
-        resp = requests.post(
-            "http://localhost:11434/api/generate", data=json.dumps(payload), timeout=120
+    def _generate(self, system_prompt: str, user_prompt: str, model: type[BaseModel]) -> str:
+        return self._provider.generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            schema=model.model_json_schema(mode="serialization"),
+            schema_name=model.__name__.lower(),
         )
-        resp.raise_for_status()
-        data = resp.json()
-        self._logger.info(
-            f"Ollama API request completed in {time.time() - start_time:.2f}s"
-        )
-        raw = data.get("response", "").strip()
-        if self._log_response:
-            self._logger.info("--------------- Ollama API response ---------------")
-            self._logger.info(raw)
-            self._logger.info("---------------------------------------------------")
-        return raw
 
-    def generate_google_searches(
-        self, payload: InstallRequest
-    ) -> List[JobGoogleSearchQuery]:
+    def generate_google_searches(self, payload: InstallRequest) -> List[JobGoogleSearchQuery]:
         prompt = (
             "Resume text:\n\n"
             f"{payload.resume}\n\n"
             "Preferences:\n\n"
             f"{payload.preferences}\n\n"
         )
-
-        payload = {
-            "model": self._model_name,
-            "prompt": prompt,
-            "system": GOOGLE_SEARCH_PROMPT,
-            "format": {
-                "type": "array",
-                "items": JobGoogleSearchQuery.model_json_schema(mode="serialization"),
-            },
-            # instruct Ollama to return JSON matching schema
-            "stream": False,
-            "options": {
-                "temperature": 0.0,
-            },
-        }
-        raw = self._call_ollama(payload)
-        json_raw = json.loads(raw)
-        # note: query = f"{query} after:{cutoff_date.isoformat()}" for cutoff
-        return [JobGoogleSearchQuery.model_validate(r) for r in json_raw]
+        model = SearchQueries if self._provider_name == "openai" else JobGoogleSearchQuery
+        raw = self._generate(GOOGLE_SEARCH_PROMPT, prompt, model)
+        parsed = json.loads(raw)
+        if self._provider_name == "openai":
+            return SearchQueries.model_validate(parsed).items
+        return [JobGoogleSearchQuery.model_validate(item) for item in parsed]
 
     def generate_job_info(self, page_text: str) -> JobDetails:
-        prompt = f"Analyze the page below:\n{page_text}"
-
-        payload = {
-            "model": self._model_name,
-            "prompt": prompt,
-            "system": JOB_ANALYSIS_SYSTEM_PROMPT,
-            "format": JobDetails.model_json_schema(),  # instruct Ollama to return JSON matching schema
-            "stream": False,
-            "options": {
-                "temperature": 0.0,
-            },
-        }
-
-        raw = self._call_ollama(payload)
+        raw = self._generate(
+            JOB_ANALYSIS_SYSTEM_PROMPT,
+            f"Analyze the page below:\n{page_text}",
+            JobDetails,
+        )
         return JobDetails.model_validate_json(raw)
 
     def generate_action(
@@ -106,21 +69,8 @@ class LeverAgent:
             "Job Description:\n\n"
             f"{job_description}\n\n"
         )
-
         system_prompt = FILLER_AGENT_SYSTEM_PROMPT.format(
             resume=resume, preferences=preferences
         )
-
-        payload = {
-            "model": self._model_name,
-            "prompt": prompt,
-            "system": system_prompt,
-            "format": AgentAction.model_json_schema(),  # instruct Ollama to return JSON matching schema
-            "stream": False,
-            "options": {
-                "temperature": 0.0,
-            },
-        }
-
-        raw = self._call_ollama(payload)
+        raw = self._generate(system_prompt, prompt, AgentAction)
         return AgentAction.model_validate_json(raw)

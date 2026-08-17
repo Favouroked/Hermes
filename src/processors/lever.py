@@ -20,11 +20,14 @@ from src.web.lever import LeverAutoBrowser, LeverBrowser
 
 class LeverProcessor:
     def __init__(self, installation_id: str):
-        self._agent = LeverAgent()
         self._logger = get_logger(__name__)
         self._installation_id = installation_id
         self._headless_mode = True
         self._installation_data = self._get_installation_data()
+        self._agent = LeverAgent(
+            provider=self._installation_data["llm_provider"],
+            openai_key=self._installation_data["openai_key"],
+        )
 
     def _get_installation_data(self):
         with SessionLocal() as session:
@@ -39,7 +42,11 @@ class LeverProcessor:
                 "installation_id": record.installation_id,
                 "resume": record.resume,
                 "preferences": record.preferences,
+                "openai_key": record.openai_key,
+                "llm_provider": record.llm_provider or "ollama",
             }
+
+
 
     async def process_questions(
         self, link: str, page_text: str
