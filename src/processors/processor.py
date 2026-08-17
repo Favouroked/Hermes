@@ -94,6 +94,23 @@ class Processor:
             )
             await page.setViewport({"width": 1366, "height": 768})
             await page.goto(link, waitUntil="networkidle2", timeout=120_000)
+
+            try:
+                await page.waitForFunction(
+                    """
+                    () => {
+                        const text = document.body?.innerText || "";
+                        return text.trim().length > 0 &&
+                               !text.includes("Jump to selected job details\\nLoading");
+                    }
+                    """,
+                    {"timeout": 30_000},
+                )
+            except Exception:
+                self._logger.warning(
+                    "Timed out waiting for job details: %s", link
+                )
+
             return await page.evaluate(
                 "() => document.body ? document.body.innerText : ''"
             )
