@@ -15,7 +15,7 @@ from src.db.model import (
 )
 from src.models.processors import LeverQuestion
 from src.processors.utils import clean_url
-from src.web.lever import LeverAutoBrowser, LeverBrowser
+from src.web.lever import LeverBrowser
 
 
 class LeverProcessor:

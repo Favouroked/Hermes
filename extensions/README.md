@@ -41,7 +41,23 @@ This Chrome extension automates the process of discovering job listings by searc
 9. After all URLs processed, completion message is shown
 10. Extension prevents new searches for 24 hours
 
-## Backend API Endpoints
+## Current Google Search API
+
+The extension submits the Google Search form to `POST /api/automaton/google-search`.
+Stored searches are reused by default. Enable the “Force generate new searches” checkbox to request a fresh set.
+
+**Request:**
+```json
+{
+  "installation_id": "hermes_1234567890_abc123",
+  "cutoff_date": "2026-08-15",
+  "force_generate": false
+}
+```
+
+The response contains a `search_run_id` and the Google URLs to process. `force_generate` is optional and defaults to `false`.
+
+## Legacy Backend API Endpoints
 
 ### POST /api/install
 

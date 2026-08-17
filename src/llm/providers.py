@@ -48,7 +48,7 @@ class OpenAIProvider:
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI provider requires an installation key or OPENAI_API_KEY")
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-5-nano")
         self._client = OpenAI(api_key=self.api_key)
         self._logger = get_logger(__name__)
 

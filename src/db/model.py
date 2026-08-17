@@ -43,6 +43,16 @@ class JobAnalysis(Base):
     )
 
 
+class SearchRun(Base):
+    __tablename__ = "search_runs"
+
+    id = Column(String(64), primary_key=True)
+    installation_id = Column(String(128), nullable=False, index=True)
+    cutoff_date = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, default="generated")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ApplicationQuestions(Base):
     __tablename__ = "application_questions"
     id = Column(Integer, primary_key=True, index=True)
@@ -80,6 +90,7 @@ class JobGoogleSearchQuery(Base):
     filters = Column(JSON, nullable=False)
     query = Column(Text, nullable=False)
     google_search_url = Column(Text, nullable=False)
+    search_run_id = Column(String(64), ForeignKey("search_runs.id"), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -94,6 +105,7 @@ class InstalledExtensions(Base):
     preferences = Column(Text, nullable=False)
     openai_key = Column(Text)
     llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
+    auto_fill = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

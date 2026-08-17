@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -65,3 +65,7 @@ class AgentAction(BaseModel):
         default=None,
         description="The answer value. This is not required for 'click' actions.",
     )
+
+
+class AgentActions(BaseModel):
+    items: List[AgentAction] = Field(default_factory=list)

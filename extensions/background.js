@@ -1,423 +1,46 @@
-// Background service worker for Hermes Job Search Extension
-
 const API_BASE_URL = 'http://localhost:8080';
+let googleState = {active:false,urls:[],index:0,runId:null,installationId:null,links:[]};
+const manualTasks = new Map();
+const LINKS_KEY = 'linksRun';
 
-// Job search state
-let jobSearchState = {
-    isActive: false,
-    urls: [],
-    currentIndex: 0,
-    installationId: null,
-    completedUrls: []
-};
+async function saveLinks(state){await chrome.storage.local.set({[LINKS_KEY]:state});}
+async function loadLinks(){const value=await chrome.storage.local.get(LINKS_KEY);return value[LINKS_KEY]||{active:false,links:[],index:0,currentTabId:null,installationId:null};}
+async function post(path,body){const response=await fetch(API_BASE_URL+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error(await response.text());return response.json();}
 
-// Storage helpers for persisting application state
-const APPLICATION_STATE_KEY = 'applicationState';
-
-function getDefaultApplicationState() {
-    return {
-        isActive: false,
-        urls: [],
-        currentIndex: 0,
-        installationId: null,
-        currentTabId: null,
-    };
-}
-
-async function loadApplicationStateFromStorage() {
-    try {
-        const result = await chrome.storage.local.get([APPLICATION_STATE_KEY]);
-        const stored = result && result[APPLICATION_STATE_KEY];
-        if (stored && typeof stored === 'object') {
-            // Merge with defaults to avoid missing fields
-            const applicationState = {...getDefaultApplicationState(), ...stored};
-            console.log('Loaded applicationState from storage:', applicationState);
-            return applicationState;
-        }
-    } catch (e) {
-        console.warn('Failed to load applicationState from storage:', e);
-    }
-}
-
-async function saveApplicationStateToStorage(newState) {
-    try {
-        await chrome.storage.local.set({[APPLICATION_STATE_KEY]: newState});
-        // Optional: log for debugging
-        // console.log('Saved applicationState to storage');
-    } catch (e) {
-        console.warn('Failed to save applicationState to storage:', e);
-    }
-}
-
-// Listen for messages from popup and content scripts
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'startJobSearch') {
-        handleStartJobSearch(request.urls, request.installationId);
-    } else if (request.action === 'startApplying') {
-        handleStartApplying(request.urls, request.installationId);
-    } else if (request.action === 'linksExtracted') {
-        handleLinksExtracted(request.links, sender.tab.id, request.submitLinks);
-    } else if (request.action === 'captchaDetected') {
-        handleCaptchaDetected(sender.tab.id);
-    } else if (request.action === 'captchaResolved') {
-        handleCaptchaResolved(sender.tab.id);
-    }
-    return true; // Keep message channel open for async responses
+chrome.runtime.onMessage.addListener((request,sender,sendResponse)=>{
+  if(request.action==='startGoogleSearch') startGoogleSearch(request).catch(console.error);
+  if(request.action==='googleLinks') googleLinks(request.links||[],sender.tab&&sender.tab.id,request.done);
+  if(request.action==='captchaDetected') chrome.notifications.create({type:'basic',iconUrl:'icon48.png',title:'Hermes captcha',message:'Solve the captcha in the open tab to continue.'});
+  if(request.action==='startLinks') startLinks(request.links,request.installationId).catch(console.error);
+  if(request.action==='terminateLinks') terminateLinks().catch(console.error);
+  if(request.action==='getCurrentLink') loadLinks().then(s=>sendResponse({link:s.links[s.index]||null}));
+  if(request.action==='openAndExecute') chrome.tabs.create({url:request.url,active:true}).then(tab=>manualTasks.set(tab.id,request.actions||[]));
+  return true;
 });
 
-// Start the job search process
-async function handleStartJobSearch(urls, installationId) {
-    console.log('Starting job search with', urls.length, 'URLs');
+async function startGoogleSearch(request){googleState={active:true,urls:request.urls,index:0,runId:request.search_run_id,installationId:request.installationId,links:[]};await chrome.storage.local.set({googleState,currentRoute:'results'});await openGoogle();}
+async function openGoogle(){if(!googleState.active||googleState.index>=googleState.urls.length){googleState.active=false;chrome.runtime.sendMessage({action:'googleComplete'});return;}chrome.runtime.sendMessage({action:'googleProgress',current:googleState.index+1,total:googleState.urls.length});const tab=await chrome.tabs.create({url:googleState.urls[googleState.index],active:true});googleState.tabId=tab.id;}
+async function googleLinks(links,tabId,done){if(!googleState.active||tabId!==googleState.tabId)return;googleState.links=[...new Set([...googleState.links,...links])];await chrome.storage.local.set({googleState});chrome.runtime.sendMessage({action:'googleLinks',links});if(!done)return;try{await chrome.tabs.remove(tabId);}catch(e){}googleState.index++;await openGoogle();}
 
-    jobSearchState = {
-        isActive: true,
-        urls: urls,
-        currentIndex: 0,
-        installationId: installationId,
-        completedUrls: []
-    };
+async function startLinks(links,installationId){await saveLinks({active:true,links,index:0,currentTabId:null,installationId});await openNextLink();}
+async function openNextLink(){const state=await loadLinks();if(!state.active||state.index>=state.links.length){state.active=false;await saveLinks(state);chrome.runtime.sendMessage({action:'linksComplete'});return;}const tab=await chrome.tabs.create({url:state.links[state.index].url,active:true});state.currentTabId=tab.id;await saveLinks(state);chrome.runtime.sendMessage({action:'linkProgress',current:state.index+1,total:state.links.length,link:state.links[state.index]});}
+async function terminateLinks(){const state=await loadLinks();state.active=false;await saveLinks(state);chrome.runtime.sendMessage({action:'linksTerminated'});}
+async function markProcessed(state,item){await fetch(`${API_BASE_URL}/api/automaton/links/${item.id}/processed`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:state.installationId,notes:item.notes||''})});}
 
-    // Process URLs sequentially
-    await processNextUrl();
-}
+chrome.tabs.onRemoved.addListener(async tabId=>{const state=await loadLinks();if(!state.active||state.currentTabId!==tabId)return;const item=state.links[state.index];try{await markProcessed(state,item);}catch(e){console.error(e);}state.index++;state.currentTabId=null;await saveLinks(state);setTimeout(openNextLink,300);});
 
-// Start the job application process (sequential with manual tab closing)
-async function handleStartApplying(urls, installationId) {
-    console.log('Starting job applications with', urls.length, 'URLs');
+async function pageHtml(tabId){try{const result=await chrome.tabs.sendMessage(tabId,{action:'getPageHtml'});return result||'';}catch(e){return '';}}
+chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{if(changeInfo.status!=='complete')return;const state=await loadLinks();if(state.active&&state.currentTabId===tabId){try{const actions=await post('/api/auto-fill/check',{installation_id:state.installationId,url:tab.url,html:await pageHtml(tabId)});if(actions.length)chrome.tabs.sendMessage(tabId,{action:'executeActions',actions});}catch(e){console.error('link auto-fill',e);}}});
 
-    const applicationState = {
-        isActive: true,
-        urls: urls,
-        currentIndex: 0,
-        installationId: installationId,
-        currentTabId: null
-    };
-
-    // Persist application state
-    await saveApplicationStateToStorage(applicationState);
-
-    // Open first URL
-    await openNextApplicationUrl();
-}
-
-// Open the next application URL
-async function openNextApplicationUrl() {
-    const applicationState = await loadApplicationStateFromStorage();
-    if (applicationState.currentIndex >= applicationState.urls.length) {
-        // All URLs processed
-        await handleApplicationComplete();
-        return;
-    }
-
-    const currentUrl = applicationState.urls[applicationState.currentIndex];
-    console.log(`Opening application ${applicationState.currentIndex + 1}/${applicationState.urls.length}: ${currentUrl}`);
-
-    // Notify popup of progress
-    chrome.runtime.sendMessage({
-        action: 'applicationProgress',
-        current: applicationState.currentIndex + 1,
-        total: applicationState.urls.length
-    });
-
-    try {
-        // Open URL in a new tab
-        const tab = await chrome.tabs.create({
-            url: currentUrl,
-            active: true
-        });
-
-        // Store current tab ID
-        applicationState.currentTabId = tab.id;
-        console.log(`Opened tab ${tab.id}. Waiting for user to close it...`);
-
-        // Persist application state
-        await saveApplicationStateToStorage(applicationState);
-
-    } catch (error) {
-        console.error('Error opening application tab:', error);
-        // Continue with next URL even if this one failed
-        applicationState.currentIndex++;
-        await saveApplicationStateToStorage(applicationState);
-        await openNextApplicationUrl();
-    }
-}
-
-// Handle application completion
-async function handleApplicationComplete() {
-    console.log('All job applications visited!');
-
-    applicationState.isActive = false;
-
-    // Clear applying state
-    await chrome.storage.local.remove(['isApplying']);
-    // Remove persisted application state (completed)
-    await chrome.storage.local.remove([APPLICATION_STATE_KEY]);
-
-    // Notify popup
-    chrome.runtime.sendMessage({
-        action: 'applicationComplete'
-    });
-
-    // Show completion notification
-    chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icon48.png',
-        title: 'Hermes: Applications Complete',
-        message: 'You have visited all job application URLs!',
-        priority: 1
-    });
-}
-
-// Process the next URL in the queue
-async function processNextUrl() {
-    if (jobSearchState.currentIndex >= jobSearchState.urls.length) {
-        // All URLs processed
-        await handleSearchComplete();
-        return;
-    }
-
-    const currentUrl = jobSearchState.urls[jobSearchState.currentIndex];
-    console.log(`Processing URL ${jobSearchState.currentIndex + 1}/${jobSearchState.urls.length}: ${currentUrl}`);
-
-    // Notify popup of progress
-    chrome.runtime.sendMessage({
-        action: 'searchProgress',
-        current: jobSearchState.currentIndex + 1,
-        total: jobSearchState.urls.length
-    });
-
-    try {
-        // Open URL in a new tab
-        const tab = await chrome.tabs.create({
-            url: currentUrl,
-            active: true
-        });
-
-        // Store tab info for this URL
-        jobSearchState.completedUrls[jobSearchState.currentIndex] = {
-            url: currentUrl,
-            tabId: tab.id,
-            status: 'loading',
-            extractedLinks: [],
-        };
-
-    } catch (error) {
-        console.error('Error opening tab:', error);
-        // Continue with next URL even if this one failed
-        jobSearchState.currentIndex++;
-        await processNextUrl();
-    }
-
-}
-
-// Handle links extracted from a Google search page
-async function handleLinksExtracted(links, tabId, submitLinks) {
-    console.log(`Received ${links.length} links from tab ${tabId}`);
-
-    const extractedLinks = jobSearchState.completedUrls[jobSearchState.currentIndex].extractedLinks
-    const allLinks = [...extractedLinks, ...links]
-
-    jobSearchState.completedUrls[jobSearchState.currentIndex].extractedLinks = allLinks;
-
-    if (!submitLinks) {
-        return;
-    }
-    try {
-        // Send links to /api/listings
-        const response = await fetch(`${API_BASE_URL}/api/listings`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                installation_id: jobSearchState.installationId,
-                links: allLinks
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Server responded with status: ${response.status}`);
-        }
-
-        const result = await response.json();
-        console.log('Links sent to server:', result);
-
-        // Close the tab after processing
-        await chrome.tabs.remove(tabId);
-
-        // Move to next URL
-        jobSearchState.currentIndex++;
-        await processNextUrl();
-
-        //     complete (for testing)
-        // await handleSearchComplete();
-
-    } catch (error) {
-        console.error('Error sending links to server:', error);
-
-        // Close tab and continue with next URL
-        try {
-            await chrome.tabs.remove(tabId);
-        } catch (e) {
-            console.error('Error closing tab:', e);
-        }
-
-        jobSearchState.currentIndex++;
-        await processNextUrl();
-    }
-}
-
-// Handle captcha detection
-function handleCaptchaDetected(tabId) {
-    console.log(`Captcha detected on tab ${tabId}. Waiting for user to solve...`);
-
-    // Show notification to user
-    chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icon48.png',
-        title: 'Hermes: Captcha Detected',
-        message: 'Please solve the captcha in the open tab. The extension will continue automatically.',
-        priority: 2
-    });
-}
-
-// Handle captcha resolution
-function handleCaptchaResolved(tabId) {
-    console.log(`Captcha resolved on tab ${tabId}. Continuing...`);
-
-    // Clear any captcha notifications
-    chrome.notifications.clear('captcha_notification');
-
-    // The content script will automatically continue extracting links
-}
-
-// Handle search completion
-async function handleSearchComplete() {
-    console.log('Job search complete!');
-
-    jobSearchState.isActive = false;
-
-    // Notify popup
-    chrome.runtime.sendMessage({
-        action: 'searchComplete'
-    });
-
-    // Show completion notification
-    chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icon48.png',
-        title: 'Hermes: Search Complete',
-        message: 'All job search URLs have been processed. Check back in 24 hours for results!',
-        priority: 1
-    });
-}
-
-async function callJobFiller(url, installationId) {
-    // Call /api/filler
-    const response = await fetch('http://localhost:8080/api/filler', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            url: url,
-            html: '',
-            timestamp: new Date().toISOString(),
-            installation_id: installationId
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Server responded with status: ${response.status}`);
-    }
-
-    const actions = await response.json();
-    console.log(`Received ${actions.length} actions from /api/filler`);
-    return actions;
-}
-
-async function markJobProcessed(url, installationId) {
-    await fetch('http://localhost:8080/api/job-processed', {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            url: url,
-            timestamp: new Date().toISOString(),
-            installation_id: installationId
-        })
-    });
-}
-
-// Listen for tab updates to detect when pages finish loading
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    // Handle job search tabs (Google search pages)
-    if (jobSearchState.isActive && changeInfo.status === 'complete') {
-        // Check if this is one of our search tabs
-        const urlInfo = jobSearchState.completedUrls.find(u => u && u.tabId === tabId);
-        if (urlInfo && urlInfo.status === 'loading') {
-            urlInfo.status = 'loaded';
-            console.log(`Tab ${tabId} finished loading: ${tab.url}`);
-            // Content script will automatically start processing
-        }
-    }
-
-    // Handle job application tabs
-    const applicationState = await loadApplicationStateFromStorage();
-    if (applicationState.isActive && changeInfo.status === 'complete') {
-        // Check if this is the current application tab
-        if (applicationState.currentTabId === tabId) {
-            console.log(`Job application tab ${tabId} finished loading: ${tab.url}`);
-            console.log('Sending processJobPage message to content script...');
-
-            const actions = await callJobFiller(tab.url, applicationState.installationId)
-
-            // Send message to content script to process the job page
-            chrome.tabs.sendMessage(tabId, {
-                action: 'processJobPage',
-                installationId: applicationState.installationId,
-                jobActions: actions
-            }).catch(error => {
-                console.error('Error sending processJobPage message:', error);
-            });
-        }
-    }
+chrome.tabs.onUpdated.addListener(async(tabId,changeInfo,tab)=>{
+  if(changeInfo.status!=='complete'||!tab.url||/^chrome:|^chrome-extension:/.test(tab.url))return;
+  const state=await loadLinks();if(state.active&&state.currentTabId===tabId)return;
+  const stored=await chrome.storage.local.get('installationId');if(!stored.installationId)return;
+  try{const settings=await fetch(`${API_BASE_URL}/api/settings?installation_id=${encodeURIComponent(stored.installationId)}`).then(r=>r.json());if(!settings.auto_fill)return;const actions=await post('/api/auto-fill/check',{installation_id:stored.installationId,url:tab.url,html:await pageHtml(tabId)});if(actions.length)chrome.tabs.sendMessage(tabId,{action:'executeActions',actions});}catch(e){console.debug('Hermes auto-fill unavailable',e);}
 });
 
-// Listen for tab closes to open next application URL
-chrome.tabs.onRemoved.addListener(async (tabId, removeInfo) => {
-    const applicationState = await loadApplicationStateFromStorage();
-
-    // if (applicationState.isActive && applicationState.currentTabId === tabId) {
-    if (applicationState.currentTabId === tabId) {
-        const currentUrl = applicationState.urls[applicationState.currentIndex];
-        const installationId = applicationState.installationId;
-        await markJobProcessed(currentUrl, installationId);
-        console.log(`Application tab ${tabId} closed by user. Opening next URL...`);
-
-        // Move to next URL
-        applicationState.currentIndex++;
-        applicationState.currentTabId = null;
-
-        // Persist application state
-        await saveApplicationStateToStorage(applicationState);
-
-        // Open next URL after a short delay
-        setTimeout(() => {
-            openNextApplicationUrl();
-        }, 500);
-    }
+chrome.tabs.onUpdated.addListener(async(tabId,changeInfo)=>{
+  if(changeInfo.status!=='complete'||!manualTasks.has(tabId))return;
+  const actions=manualTasks.get(tabId);manualTasks.delete(tabId);
+  if(actions.length)chrome.tabs.sendMessage(tabId,{action:'executeActions',actions});
 });
-
-
-// Handle extension installation
-chrome.runtime.onInstalled.addListener((details) => {
-    if (details.reason === 'install') {
-        console.log('Hermes extension installed!');
-        // Open popup automatically
-        chrome.action.openPopup();
-    }
-});
-
-console.log('Hermes background service worker initialized');
