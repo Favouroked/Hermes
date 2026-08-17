@@ -99,7 +99,7 @@ class JobGoogleSearchQuery(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     installation_id = Column(String(128), nullable=False)
-    site = Column(String(32), nullable=False)  # e.g., "lever"
+    site = Column(String(32), nullable=False)  # e.g., "greenhouse"
     role_focus = Column(String(256), nullable=False)
     filters = Column(JSON, nullable=False)
     query = Column(Text, nullable=False)

@@ -88,7 +88,7 @@ class GoogleSearchTests(unittest.TestCase):
 
         with patch.object(api, "SessionLocal", side_effect=[SessionContext(installation_session), SessionContext(query_session)]), \
              patch.object(api, "uuid4", return_value=SimpleNamespace(hex="run-1")) as uuid_mock, \
-             patch.object(api, "LeverAgent") as agent_mock:
+             patch.object(api, "Agent") as agent_mock:
             response = api.app.test_client().post(
                 "/api/automaton/google-search",
                 json={"installation_id": "hermes-1", "cutoff_date": "2026-08-15"},
@@ -121,7 +121,7 @@ class GoogleSearchTests(unittest.TestCase):
 
         with patch.object(api, "SessionLocal", side_effect=[SessionContext(installation_session), SessionContext(query_session), SessionContext(insert_session)]), \
              patch.object(api, "uuid4", return_value=SimpleNamespace(hex="run-2")), \
-             patch.object(api, "LeverAgent", return_value=agent):
+             patch.object(api, "Agent", return_value=agent):
             response = api.app.test_client().post(
                 "/api/automaton/google-search",
                 json={"installation_id": "hermes-1", "cutoff_date": "2026-08-15", "force_generate": True},

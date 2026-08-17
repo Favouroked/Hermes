@@ -1,9 +1,9 @@
 import asyncio
 
-from src.agents.lever import LeverAgent
-from src.processors.lever import LeverAutoApply, LeverQuestionProcessor
+from src.agents.agent import Agent
+from snippets.lever_processor_v1 import LeverAutoApply, LeverQuestionProcessor
 
-agent = LeverAgent()
+agent = Agent()
 
 
 async def main():

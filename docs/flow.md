@@ -15,7 +15,7 @@ This reflects the current codebase behavior.
   "preferences": "<your preferences>"
 }
 ```
-- The backend stores the installation and generates Google search queries (via `LeverAgent`). It returns an array of Google search URLs.
+- The backend stores the installation and generates Google search queries (via the platform-neutral `Agent`). It returns an array of Google search URLs.
 
 ### 2) Run Google searches and collect job links (background + content scripts)
 - The background script (`extensions/background.js`) opens each returned Google search URL in a new tab, one by one.
@@ -24,7 +24,7 @@ This reflects the current codebase behavior.
 - Tabs are closed automatically as pages are processed.
 
 ### 3) Server processes discovered links
-- The server stores and schedules processing of the discovered links (`src/web/api.py` uses a `ProcessPoolExecutor` to trigger `src/jobs/lever.execute`).
+- The server stores and schedules processing of the discovered links (`src/web/api.py` uses a `ProcessPoolExecutor` to trigger `src/jobs/job.execute`).
 - In the popup, status is polled via `POST /api/status`:
   - `{"status": "processing"}` — still crunching
   - `{"status": "google", "urls": [...]}` — initial state when searches must be run (the popup/background will start them)

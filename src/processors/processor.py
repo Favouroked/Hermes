@@ -1,11 +1,11 @@
-from typing import AsyncIterator, List, Optional
+from typing import AsyncIterator, List, Optional, get_args
 from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from src.agents.lever import AgentAction, LeverAgent
+from src.agents.agent import Agent
 from src.config.logger import get_logger
 from src.db.model import (
     ApplicationActions,
@@ -13,7 +13,8 @@ from src.db.model import (
     SessionLocal,
     InstalledExtensions,
 )
-from src.models.processors import LeverQuestion
+from src.models.processors import Question
+from src.models.agents import AgentAction, JobGoogleSearchQuery
 from src.processors.utils import clean_url
 from src.web.lever import LeverBrowser
 
@@ -22,13 +23,24 @@ class ProcessingCancelled(Exception):
     """Raised when the external processing controller requests cancellation."""
 
 
-class LeverProcessor:
+PLATFORM_DOMAINS = {
+    "lever": ("lever.co",),
+    "greenhouse": ("greenhouse.io",),
+    "ashbyhq": ("ashbyhq.com",),
+    "myworkdayjobs": ("myworkdayjobs.com",),
+    "smartrecruiters": ("smartrecruiters.com",),
+    "jobvite": ("jobvite.com",),
+}
+SUPPORTED_PLATFORMS = set(get_args(JobGoogleSearchQuery.__annotations__["site"]))
+
+
+class Processor:
     def __init__(self, installation_id: str):
         self._logger = get_logger(__name__)
         self._installation_id = installation_id
         self._headless_mode = True
         self._installation_data = self._get_installation_data()
-        self._agent = LeverAgent(
+        self._agent = Agent(
             provider=self._installation_data["llm_provider"],
             openai_key=self._installation_data["openai_key"],
         )
@@ -54,7 +66,7 @@ class LeverProcessor:
 
     async def process_questions(
         self, link: str, page_text: str, stop_event=None
-    ) -> AsyncIterator[LeverQuestion]:
+    ) -> AsyncIterator[Question]:
         apply_link = clean_url(link)
         if not apply_link.endswith("/apply"):
             apply_link = f"{apply_link}/apply"
@@ -73,20 +85,23 @@ class LeverProcessor:
                 action = self._agent.generate_action(
                     question_html, page_text, resume, preferences
                 )
-                yield LeverQuestion(action=action, question_html=question_html)
+                yield Question(action=action, question_html=question_html)
             except Exception:
                 self._logger.exception(
                     f"Error processing question:\n\n{question_html}.\n"
                 )
 
-    def _validate_lever_url(self, url: str) -> bool:
+    @staticmethod
+    def _validate_url(url: str) -> bool:
         try:
             parsed = urlparse(url)
-            parts = parsed.path.strip("/").split("/")
-            return (
-                parsed.scheme == "https"
-                and "lever.co" in parsed.netloc
-                and len(parts) >= 2
+            hostname = (parsed.hostname or "").lower().rstrip(".")
+            if parsed.scheme != "https" or not parsed.path.strip("/"):
+                return False
+            return any(
+                platform in SUPPORTED_PLATFORMS
+                and any(hostname == domain or hostname.endswith(f".{domain}") for domain in domains)
+                for platform, domains in PLATFORM_DOMAINS.items()
             )
         except Exception:
             return False
@@ -102,8 +117,8 @@ class LeverProcessor:
         if link.endswith("/apply"):
             link = link[:-6]
 
-        if not self._validate_lever_url(link):
-            raise ValueError(f"Invalid Lever job URL format: {link}")
+        if not self._validate_url(link):
+            raise ValueError(f"Invalid supported job URL format: {link}")
 
         r = requests.get(link)
 

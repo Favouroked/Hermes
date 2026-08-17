@@ -18,7 +18,7 @@ class SearchQueries(BaseModel):
     items: List[JobGoogleSearchQuery] = Field(..., description="Generated job searches")
 
 
-class LeverAgent:
+class Agent:
     def __init__(self, provider: str | None = None, openai_key: str | None = None):
         provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
         if provider == "ollama":

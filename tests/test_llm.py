@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from src.agents.lever import LeverAgent
+from src.agents.agent import Agent
 from src.llm.providers import OpenAIProvider
 from src.models.agents import JobDetails
 
@@ -33,7 +33,7 @@ class LLMTests(unittest.TestCase):
         self.assertEqual(request["response_format"]["json_schema"]["schema"], JobDetails.model_json_schema())
 
 
-    def test_lever_agent_openai_wraps_search_array(self):
+    def test_agent_openai_wraps_search_array(self):
         search = {
             "site": "lever",
             "role_focus": "Backend Engineer",
@@ -43,7 +43,7 @@ class LLMTests(unittest.TestCase):
         }
         provider = Mock()
         provider.generate.return_value = json.dumps({"items": [search]})
-        agent = LeverAgent.__new__(LeverAgent)
+        agent = Agent.__new__(Agent)
         agent._provider = provider
         agent._provider_name = "openai"
 
@@ -65,7 +65,7 @@ class LLMTests(unittest.TestCase):
         }
         provider = Mock()
         provider.generate.return_value = json.dumps([search])
-        agent = LeverAgent.__new__(LeverAgent)
+        agent = Agent.__new__(Agent)
         agent._provider = provider
         agent._provider_name = "ollama"
 

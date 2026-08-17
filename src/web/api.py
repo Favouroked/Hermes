@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from src.agents.lever import LeverAgent
+from src.agents.agent import Agent
 from src.config.logger import get_logger
 from src.db.model import (
     ApplicationActions,
@@ -23,7 +23,7 @@ from src.db.model import (
     SessionLocal,
     InstalledExtensions,
 )
-from src.jobs.lever import execute as trigger_jobs_processing
+from src.jobs.job import execute as trigger_jobs_processing
 from src.models.api import (
     Action, ExtensionRequest, GoogleResultsRequest, GoogleSearchRequest,
     InstallRequest, LinkNotesRequest, LinksRequest, ManualFillRequest,
@@ -146,7 +146,7 @@ def google_search():
         openai_key=record.openai_key,
         cutoff_date=cutoff,
     )
-    searches = LeverAgent(provider=payload.llm_provider, openai_key=payload.openai_key).generate_google_searches(payload)
+    searches = Agent(provider=payload.llm_provider, openai_key=payload.openai_key).generate_google_searches(payload)
     with SessionLocal() as session:
         session.add(SearchRun(id=run_id, installation_id=data.installation_id, cutoff_date=cutoff, status="running"))
         records = [
@@ -295,7 +295,7 @@ def manual_fill():
         actions = [] if job is None else session.query(ApplicationActions).filter_by(job_analysis_id=job.id).all()
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.answer_text) for a in actions]
     if not response_actions:
-        agent = LeverAgent(provider=record.llm_provider or "ollama", openai_key=record.openai_key)
+        agent = Agent(provider=record.llm_provider or "ollama", openai_key=record.openai_key)
         generated = agent.generate_actions(html, context or f"Resume:\n{record.resume}\nPreferences:\n{record.preferences}")
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.value) for a in generated]
     return jsonify([item.model_dump(mode="json") for item in response_actions])

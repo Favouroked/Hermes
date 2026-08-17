@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from src.config.logger import get_logger
 from src.db.model import JobAnalysis, ProcessingRun, SessionLocal
-from src.processors.lever import LeverProcessor, ProcessingCancelled
+from src.processors.processor import Processor, ProcessingCancelled
 
 logger = get_logger(__name__)
 
@@ -51,7 +51,7 @@ async def _execute(installation_id: str, run_id: str, stop_event):
         run.started_at = datetime.now(timezone.utc)
         session.commit()
 
-    processor = LeverProcessor(installation_id)
+    processor = Processor(installation_id)
     cancelled = False
     for data in pending_jobs(installation_id, run_id):
         if stop_event.is_set():
