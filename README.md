@@ -101,6 +101,21 @@ python src/web/api.py
 - Tabs don’t advance during applying
   - You must close each application tab to open the next; the background script listens for tab close and advances
 
+## Reprocess job-analysis rows
+
+To rerun selected rows from an existing processing run, filter by the run ID and
+one or more processing statuses:
+
+```bash
+python scripts/reprocess_job_analysis.py \
+  --processing-run-id <run-id> \
+  --status failed
+```
+
+Repeat `--status` for multiple statuses and use `--limit` to cap the number of
+rows. The script processes only rows matching both filters and preserves existing
+application actions if a rerun fails.
+
 ---
 
 ## Repository Layout (selected files)

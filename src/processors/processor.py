@@ -1,8 +1,9 @@
+import os
 from typing import AsyncIterator, List, Optional, get_args
 from urllib.parse import urlparse
 
-import requests
 from bs4 import BeautifulSoup
+from pyppeteer import launch
 from tqdm import tqdm
 
 from src.agents.agent import Agent
@@ -61,6 +62,33 @@ class Processor:
                 "openai_key": record.openai_key,
                 "llm_provider": record.llm_provider or "ollama",
             }
+
+    async def _get_rendered_page_text(self, link: str) -> str:
+        """Load a job page in a browser and return text after its scripts run."""
+        launch_options = {
+            "headless": self._headless_mode,
+            "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        }
+
+        browser = await launch(**launch_options)
+        page = None
+        try:
+            page = await browser.newPage()
+            await page.setUserAgent(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/127.0.0.0 Safari/537.36"
+            )
+            await page.setViewport({"width": 1366, "height": 768})
+            await page.goto(link, waitUntil="networkidle2", timeout=120_000)
+            return await page.evaluate(
+                "() => document.body ? document.body.innerText : ''"
+            )
+        finally:
+            if page is not None:
+                await page.close()
+            await browser.close()
 
 
 
@@ -123,20 +151,20 @@ class Processor:
         if not self._validate_url(link):
             raise ValueError(f"Invalid supported job URL format: {link}")
 
-        r = requests.get(link)
-
-        r.raise_for_status()
-
         check_cancelled()
-        soup = BeautifulSoup(r.text, "html.parser")
-        page_text = soup.get_text()
+        page_text = await self._get_rendered_page_text(link)
+        check_cancelled()
         job_info = self._agent.generate_job_info(page_text)
         check_cancelled()
         is_unknown = job_info.title.lower() == "unknown"
         with SessionLocal() as session:
             updates = job_info.model_dump()
+            updates["page_text"] = page_text
             if is_unknown:
                 updates["is_processing"] = False
+                session.query(ApplicationActions).filter(
+                    ApplicationActions.job_analysis_id == job_id
+                ).delete(synchronize_session=False)
             session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(updates)
             session.commit()
 
@@ -150,6 +178,9 @@ class Processor:
         check_cancelled()
 
         with SessionLocal() as session:
+            session.query(ApplicationActions).filter(
+                ApplicationActions.job_analysis_id == job_id
+            ).delete(synchronize_session=False)
             db_actions = [
                 ApplicationActions(
                     job_analysis_id=job_id,
