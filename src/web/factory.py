@@ -1,4 +1,4 @@
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 from urllib.parse import urlparse
 
 from src.web.lever import LeverBrowser
@@ -17,11 +17,11 @@ class BrowserFactory:
 
     @staticmethod
     def get_browser(
-        link: str, *, headless: bool = True
+        link: str, *, headless: bool = True, browser: Any = None
     ) -> Optional[QuestionBrowser]:
         hostname = (urlparse(link).hostname or "").lower().rstrip(".")
         if hostname == "lever.co" or hostname.endswith(".lever.co"):
             if not link.endswith("/apply"):
                 link = f"{link}/apply"
-            return LeverBrowser(link, headless=headless)
+            return LeverBrowser(link, headless=headless, browser=browser)
         return None

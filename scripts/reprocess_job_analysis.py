@@ -67,17 +67,20 @@ async def reprocess(run_id: str, statuses: list[str], limit: int | None = None) 
 
     processor = Processor(installation_id)
     failures = 0
-    for job in jobs:
-        set_status(job["id"], "running")
-        try:
-            await processor.process_job(job)
-        except Exception:
-            failures += 1
-            set_status(job["id"], "failed", has_error=True)
-            logger.exception("Failed to reprocess job id=%s url=%s", job["id"], job["link"])
-        else:
-            set_status(job["id"], "completed")
-            logger.info("Reprocessed job id=%s url=%s", job["id"], job["link"])
+    try:
+        for job in jobs:
+            set_status(job["id"], "running")
+            try:
+                await processor.process_job(job)
+            except Exception:
+                failures += 1
+                set_status(job["id"], "failed", has_error=True)
+                logger.exception("Failed to reprocess job id=%s url=%s", job["id"], job["link"])
+            else:
+                set_status(job["id"], "completed")
+                logger.info("Reprocessed job id=%s url=%s", job["id"], job["link"])
+    finally:
+        await processor.close_browser()
 
     logger.info("Finished: %d selected, %d failed", len(jobs), failures)
     return failures

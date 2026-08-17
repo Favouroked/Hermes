@@ -53,22 +53,25 @@ async def _execute(installation_id: str, run_id: str, stop_event):
 
     processor = Processor(installation_id)
     cancelled = False
-    for data in pending_jobs(installation_id, run_id):
-        if stop_event.is_set():
-            cancelled = True
-            break
-        _set_job_status(data["id"], "running")
-        try:
-            await processor.process_job(data, stop_event)
-        except ProcessingCancelled:
-            _set_job_status(data["id"], "cancelled")
-            cancelled = True
-            break
-        except Exception as exc:
-            logger.exception("Job [%s] error: %s", data, exc)
-            _set_job_status(data["id"], "failed", has_error=True)
-        else:
-            _set_job_status(data["id"], "completed")
+    try:
+        for data in pending_jobs(installation_id, run_id):
+            if stop_event.is_set():
+                cancelled = True
+                break
+            _set_job_status(data["id"], "running")
+            try:
+                await processor.process_job(data, stop_event)
+            except ProcessingCancelled:
+                _set_job_status(data["id"], "cancelled")
+                cancelled = True
+                break
+            except Exception as exc:
+                logger.exception("Job [%s] error: %s", data, exc)
+                _set_job_status(data["id"], "failed", has_error=True)
+            else:
+                _set_job_status(data["id"], "completed")
+    finally:
+        await processor.close_browser()
 
     if stop_event.is_set():
         cancelled = True

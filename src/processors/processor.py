@@ -40,6 +40,7 @@ class Processor:
         self._logger = get_logger(__name__)
         self._installation_id = installation_id
         self._headless_mode = True
+        self._browser = None
         self._installation_data = self._get_installation_data()
         self._agent = Agent(
             provider=self._installation_data["llm_provider"],
@@ -63,15 +64,26 @@ class Processor:
                 "llm_provider": record.llm_provider or "ollama",
             }
 
-    async def _get_rendered_page_text(self, link: str) -> str:
-        """Load a job page in a browser and return text after its scripts run."""
+    async def _get_browser(self):
         launch_options = {
             "headless": self._headless_mode,
             "args": ["--no-sandbox", "--disable-dev-shm-usage"],
             "executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
         }
 
-        browser = await launch(**launch_options)
+        if getattr(self, "_browser", None) is None:
+            self._browser = await launch(**launch_options)
+        return self._browser
+
+    async def close_browser(self):
+        """Close the browser owned by this processor, if it was created."""
+        if getattr(self, "_browser", None) is not None:
+            await self._browser.close()
+            self._browser = None
+
+    async def _get_rendered_page_text(self, link: str) -> str:
+        """Load a job page and return text after its scripts run."""
+        browser = await self._get_browser()
         page = None
         try:
             page = await browser.newPage()
@@ -88,7 +100,6 @@ class Processor:
         finally:
             if page is not None:
                 await page.close()
-            await browser.close()
 
 
 
@@ -96,8 +107,9 @@ class Processor:
         self, link: str, page_text: str, stop_event=None
     ) -> AsyncIterator[Question]:
         cleaned_link = clean_url(link)
+        browser = await self._get_browser()
         extractor = BrowserFactory.get_browser(
-            cleaned_link, headless=self._headless_mode
+            cleaned_link, headless=self._headless_mode, browser=browser
         )
         if extractor is None:
             self._logger.info(f"No browser available for link: {link}")

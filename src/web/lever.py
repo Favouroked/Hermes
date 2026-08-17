@@ -15,7 +15,7 @@ async def __snippet__(page):
 
 
 class LeverAutoBrowser:
-    def __init__(self, show_browser: bool = True, debug: bool = False):
+    def __init__(self, show_browser: bool = True, debug: bool = False, browser=None):
         self._headless_mode = not show_browser
         self._debug = debug
         self._executable_path = (
@@ -25,7 +25,8 @@ class LeverAutoBrowser:
             "--no-sandbox",
             "--disable-dev-shm-usage",
         ]
-        self._browser = None
+        self._browser = browser
+        self._owns_browser = browser is None
         self._logger = get_logger(__name__)
         self._form_container = {"id": "application-form"}
 
@@ -38,7 +39,7 @@ class LeverAutoBrowser:
         self._browser = browser
 
     async def close_browser(self):
-        if self._browser is not None:
+        if self._browser is not None and self._owns_browser:
             await self._browser.close()
             self._browser = None
 
@@ -143,8 +144,8 @@ class LeverAutoBrowser:
 
 
 class LeverBrowser(LeverAutoBrowser):
-    def __init__(self, link: str, headless: bool = True, debug: bool = False):
-        super().__init__(not headless, debug)
+    def __init__(self, link: str, headless: bool = True, debug: bool = False, browser=None):
+        super().__init__(not headless, debug, browser=browser)
         self._logger = get_logger(__name__)
         self._link = link
         self._headless_mode = headless
