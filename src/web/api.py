@@ -175,12 +175,11 @@ def google_results():
         session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True) for link in links if link not in existing)
         run.status = "submitted"
         session.commit()
-    # todo: enable later
-    # processing_run_id = _start_processing(data.installation_id) if links else None
+    processing_run_id = _start_processing(data.installation_id) if links else None
     return jsonify({
         "status": "success",
         "links_received": len(links),
-        "processing_run_id": "processing_run_id", # todo: update
+        "processing_run_id": processing_run_id,
     })
 
 

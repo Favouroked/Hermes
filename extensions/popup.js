@@ -101,25 +101,34 @@
         const stored = await chrome.storage.local.get(['googleState', 'googleRun']);
         if (!state.run) state.run = stored.googleRun || stored.googleState || null;
         if (stored.googleState && state.links.length === 0) state.links = stored.googleState.links || [];
-        shell('Search Results', '<div id="status">Search is running…</div><div id="results"></div>');
+        const running = Boolean(stored.googleState && stored.googleState.active);
+        const submitted = Boolean(stored.googleState && stored.googleState.submitted);
+        shell('Search Results', `<div id="status">${running ? 'Search is running…' : submitted ? 'Search results submitted.' : 'Search is not running.'}</div><button id="stopGoogle" class="danger${running ? '' : ' hidden'}">Stop</button><div id="results"></div>`);
         const draw = () => {
             $('results').innerHTML = state.links.map(x => `<div class="result">${escapeHtml(x)}</div>`).join('') || '<p>No links extracted yet.</p>';
         };
         draw();
+        $('stopGoogle').onclick = () => {
+            $('stopGoogle').disabled = true;
+            status('Stopping search and submitting results…');
+            chrome.runtime.sendMessage({action: 'stopGoogleSearch'});
+        };
         chrome.runtime.onMessage.addListener(m => {
             if (m.action === 'googleProgress') status(`Search ${m.current} of ${m.total}…`);
             if (m.action === 'googleLinks') {
                 state.links = [...new Set([...state.links, ...m.links])];
                 draw();
             }
-            if (m.action === 'googleComplete') {
-                status('Search complete. Sending results…');
-                const runId = (state.run || {}).search_run_id || (state.run || {}).runId;
-                api('/api/automaton/google-results', {
-                    method: 'POST',
-                    body: JSON.stringify({installation_id: state.id, search_run_id: runId, links: state.links})
-                }).then(() => status(`Submitted ${state.links.length} links.`)).catch(e => status(e.message, true));
+            if (m.action === 'googleComplete') status('Search complete. Submitting results…');
+            if (m.action === 'googleStopped') {
+                $('stopGoogle').classList.add('hidden');
+                status('Search stopped. Submitting results…');
             }
+            if (m.action === 'googleSubmitted') {
+                $('stopGoogle').classList.add('hidden');
+                status(`Submitted ${m.links} links.`);
+            }
+            if (m.action === 'googleSubmitError') status(m.error, true);
         });
     }
 
