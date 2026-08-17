@@ -165,6 +165,7 @@ class Processor:
 
         check_cancelled()
         page_text = await self._get_rendered_page_text(link)
+        self._logger.info(f"Page Text: {page_text.strip()}")
         check_cancelled()
         job_info = self._agent.generate_job_info(page_text)
         check_cancelled()
@@ -190,22 +191,23 @@ class Processor:
         check_cancelled()
 
         with SessionLocal() as session:
-            session.query(ApplicationActions).filter(
-                ApplicationActions.job_analysis_id == job_id
-            ).delete(synchronize_session=False)
-            db_actions = [
-                ApplicationActions(
-                    job_analysis_id=job_id,
-                    question_html=question.question_html,
-                    question_text=question.action.question_text,
-                    answer_text=question.action.value,
-                    action=question.action.action,
-                    query_selector=question.action.query_selector,
-                )
-                for question in questions
-            ]
-            session.add_all(db_actions)
-            session.commit()
+            if len(questions) > 0:
+                session.query(ApplicationActions).filter(
+                    ApplicationActions.job_analysis_id == job_id
+                ).delete(synchronize_session=False)
+                db_actions = [
+                    ApplicationActions(
+                        job_analysis_id=job_id,
+                        question_html=question.question_html,
+                        question_text=question.action.question_text,
+                        answer_text=question.action.value,
+                        action=question.action.action,
+                        query_selector=question.action.query_selector,
+                    )
+                    for question in questions
+                ]
+                session.add_all(db_actions)
+                session.commit()
 
             session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
                 {"is_processing": False}
