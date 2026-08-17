@@ -63,6 +63,17 @@ This reflects the current codebase behavior.
   - Body: `{ installation_id, links: string[] }`
   - Returns: `{ status: "success", links_received: number }`
 
+- `POST /api/automaton/google-results`
+  - Body: `{ installation_id, search_run_id, links: string[] }`
+  - Returns a `processing_run_id` when background processing is started.
+
+- `GET /api/automaton/processing?installation_id=<id>`
+  - Returns the latest processing run, job counts, and per-job states.
+
+- `POST /api/automaton/processing/stop`
+  - Body: `{ installation_id }`
+  - Requests cooperative cancellation of the active processing run.
+
 - `POST /api/status`
   - Body: `{ installation_id }`
   - Returns one of:

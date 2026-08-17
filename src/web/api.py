@@ -2,6 +2,7 @@ import atexit
 import os
 import re
 import signal
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from uuid import uuid4
@@ -18,6 +19,7 @@ from src.db.model import (
     JobAnalysis,
     JobGoogleSearchQuery,
     SearchRun,
+    ProcessingRun,
     SessionLocal,
     InstalledExtensions,
 )
@@ -32,6 +34,8 @@ from src.processors.utils import clean_url
 load_dotenv(".env")
 logger = get_logger(__name__)
 EXECUTOR = ThreadPoolExecutor(max_workers=2)
+PROCESSING_RUNS = {}
+PROCESSING_RUNS_LOCK = threading.Lock()
 app = Flask(__name__)
 CORS(app)
 
@@ -53,7 +57,48 @@ def _cutoff_url(url: str, cutoff_date: str) -> str:
 
 
 def _start_processing(installation_id: str):
-    EXECUTOR.submit(trigger_jobs_processing, installation_id)
+    with PROCESSING_RUNS_LOCK:
+        current = PROCESSING_RUNS.get(installation_id)
+        if current is not None and not current["future"].done():
+            return current["run_id"]
+
+        run_id = uuid4().hex
+        stop_event = threading.Event()
+        with SessionLocal() as session:
+            run = ProcessingRun(id=run_id, installation_id=installation_id, status="queued")
+            session.add(run)
+            session.flush()
+            session.query(JobAnalysis).filter(
+                JobAnalysis.installation_id == installation_id,
+                JobAnalysis.is_processing.is_(True),
+                JobAnalysis.processing_run_id.is_(None),
+            ).update({"processing_run_id": run_id, "processing_status": "pending"}, synchronize_session=False)
+            session.commit()
+
+        future = EXECUTOR.submit(trigger_jobs_processing, installation_id, run_id, stop_event)
+        PROCESSING_RUNS[installation_id] = {
+            "run_id": run_id, "future": future, "stop_event": stop_event,
+        }
+        return run_id
+
+
+def _processing_run_json(run, jobs):
+    counts = {}
+    for job in jobs:
+        counts[job.processing_status] = counts.get(job.processing_status, 0) + 1
+    return {
+        "run_id": run.id if run else None,
+        "installation_id": run.installation_id if run else (jobs[0].installation_id if jobs else None),
+        "status": run.status if run else "idle",
+        "cancel_requested": bool(run.cancel_requested) if run else False,
+        "job_counts": counts,
+        "jobs": [{
+            "id": job.id, "url": job.link, "title": job.title,
+            "status": job.processing_status,
+            "is_processing": bool(job.is_processing),
+            "has_error": bool(job.has_error),
+        } for job in jobs],
+    }
 
 
 @app.get("/")
@@ -130,9 +175,64 @@ def google_results():
         session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True) for link in links if link not in existing)
         run.status = "submitted"
         session.commit()
-    if links:
-        _start_processing(data.installation_id)
-    return jsonify({"status": "success", "links_received": len(links)})
+    processing_run_id = _start_processing(data.installation_id) if links else None
+    return jsonify({
+        "status": "success",
+        "links_received": len(links),
+        "processing_run_id": processing_run_id,
+    })
+
+
+@app.get("/api/automaton/processing")
+def processing_status():
+    installation_id = request.args.get("installation_id", "")
+    if not installation_id:
+        return jsonify({"error": "installation_id is required"}), 400
+    with SessionLocal() as session:
+        run = (
+            session.query(ProcessingRun)
+            .filter_by(installation_id=installation_id)
+            .order_by(ProcessingRun.created_at.desc())
+            .first()
+        )
+        query = session.query(JobAnalysis).filter(JobAnalysis.installation_id == installation_id)
+        if run is not None:
+            query = query.filter(JobAnalysis.processing_run_id == run.id)
+        else:
+            query = query.filter(JobAnalysis.is_processing.is_(True))
+        jobs = query.order_by(JobAnalysis.created_at.asc(), JobAnalysis.id.asc()).all()
+        return jsonify(_processing_run_json(run, jobs))
+
+
+@app.post("/api/automaton/processing/stop")
+def stop_processing():
+    installation_id = (request.get_json() or {}).get("installation_id", "")
+    if not installation_id:
+        return jsonify({"error": "installation_id is required"}), 400
+
+    with PROCESSING_RUNS_LOCK:
+        current = PROCESSING_RUNS.get(installation_id)
+        if current is not None and not current["future"].done():
+            current["stop_event"].set()
+            run_id = current["run_id"]
+        else:
+            run_id = None
+
+    with SessionLocal() as session:
+        run = (
+            session.query(ProcessingRun)
+            .filter_by(installation_id=installation_id)
+            .order_by(ProcessingRun.created_at.desc())
+            .first()
+        )
+        if run is None or run.status in {"completed", "cancelled", "failed"}:
+            return jsonify({"error": "no active processing run"}), 404
+        if run_id is None:
+            run_id = run.id
+        run.cancel_requested = True
+        run.status = "cancelling"
+        session.commit()
+        return jsonify({"run_id": run_id, "status": run.status})
 
 
 @app.post("/api/automaton/links")

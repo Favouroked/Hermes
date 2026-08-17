@@ -37,10 +37,24 @@ class JobAnalysis(Base):
     is_processed = Column(Boolean, nullable=False, default=False)
     notes = Column(Text)
     is_agent_processed = Column(Boolean, nullable=False, default=False)
+    processing_run_id = Column(String(64), ForeignKey("processing_runs.id"), nullable=True, index=True)
+    processing_status = Column(String(32), nullable=False, default="pending", server_default="pending")
     installation_id = Column(String(128), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ProcessingRun(Base):
+    __tablename__ = "processing_runs"
+
+    id = Column(String(64), primary_key=True)
+    installation_id = Column(String(128), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="queued", server_default="queued")
+    cancel_requested = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
 
 
 class SearchRun(Base):
