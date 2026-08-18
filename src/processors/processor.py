@@ -100,8 +100,7 @@ class Processor:
                     """
                     () => {
                         const text = document.body?.innerText || "";
-                        return text.trim().length > 0 &&
-                               !text.includes("Jump to selected job details\\nLoading");
+                        return text.trim().length > 2000;
                     }
                     """,
                     {"timeout": 30_000},
@@ -182,7 +181,6 @@ class Processor:
 
         check_cancelled()
         page_text = await self._get_rendered_page_text(link)
-        self._logger.info(f"Page Text: {page_text.strip()}")
         check_cancelled()
         job_info = self._agent.generate_job_info(page_text)
         check_cancelled()

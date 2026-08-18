@@ -26,6 +26,7 @@ def selected_jobs(run_id: str, statuses: list[str], limit: int | None = None):
             .filter(
                 JobAnalysis.processing_run_id == run_id,
                 JobAnalysis.processing_status.in_(statuses),
+                JobAnalysis.link.like('%myworkdayjobs.com%')
             )
             .order_by(JobAnalysis.created_at.asc(), JobAnalysis.id.asc())
         )
