@@ -37,10 +37,34 @@ class JobAnalysis(Base):
     is_processed = Column(Boolean, nullable=False, default=False)
     notes = Column(Text)
     is_agent_processed = Column(Boolean, nullable=False, default=False)
+    processing_run_id = Column(String(64), ForeignKey("processing_runs.id"), nullable=True, index=True)
+    processing_status = Column(String(32), nullable=False, default="pending", server_default="pending")
     installation_id = Column(String(128), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ProcessingRun(Base):
+    __tablename__ = "processing_runs"
+
+    id = Column(String(64), primary_key=True)
+    installation_id = Column(String(128), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="queued", server_default="queued")
+    cancel_requested = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+
+class SearchRun(Base):
+    __tablename__ = "search_runs"
+
+    id = Column(String(64), primary_key=True)
+    installation_id = Column(String(128), nullable=False, index=True)
+    cutoff_date = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, default="generated")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ApplicationQuestions(Base):
@@ -75,11 +99,12 @@ class JobGoogleSearchQuery(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     installation_id = Column(String(128), nullable=False)
-    site = Column(String(32), nullable=False)  # e.g., "lever"
+    site = Column(String(32), nullable=False)  # e.g., "greenhouse"
     role_focus = Column(String(256), nullable=False)
     filters = Column(JSON, nullable=False)
     query = Column(Text, nullable=False)
     google_search_url = Column(Text, nullable=False)
+    search_run_id = Column(String(64), ForeignKey("search_runs.id"), nullable=True)
 
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -94,6 +119,7 @@ class InstalledExtensions(Base):
     preferences = Column(Text, nullable=False)
     openai_key = Column(Text)
     llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
+    auto_fill = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

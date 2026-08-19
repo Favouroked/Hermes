@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -11,7 +11,7 @@ class JobGoogleSearchQuery(BaseModel):
     with filters and role specifications. Used to generate targeted search URLs for job scraping.
 
     Attributes:
-        site: The job board platform to target (currently supports 'lever')
+        site: The job board platform to target.
         role_focus: The job title or role description to search for
         filters: Dictionary of filter options to apply to the search
         query: The constructed Google search query string
@@ -65,3 +65,7 @@ class AgentAction(BaseModel):
         default=None,
         description="The answer value. This is not required for 'click' actions.",
     )
+
+
+class AgentActions(BaseModel):
+    items: List[AgentAction] = Field(default_factory=list)

@@ -9,7 +9,7 @@ from src.config.prompts import (
     JOB_ANALYSIS_SYSTEM_PROMPT,
 )
 from src.llm.providers import LLMProvider, OpenAIProvider, OllamaProvider
-from src.models.agents import AgentAction, JobDetails, JobGoogleSearchQuery
+from src.models.agents import AgentAction, AgentActions, JobDetails, JobGoogleSearchQuery
 from src.models.api import InstallRequest
 from pydantic import BaseModel, Field
 
@@ -18,7 +18,7 @@ class SearchQueries(BaseModel):
     items: List[JobGoogleSearchQuery] = Field(..., description="Generated job searches")
 
 
-class LeverAgent:
+class Agent:
     def __init__(self, provider: str | None = None, openai_key: str | None = None):
         provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
         if provider == "ollama":
@@ -74,3 +74,20 @@ class LeverAgent:
         )
         raw = self._generate(system_prompt, prompt, AgentAction)
         return AgentAction.model_validate_json(raw)
+
+    def generate_actions(self, page_html: str, context: str = "") -> List[AgentAction]:
+        prompt = (
+            "Page HTML:\n\n" + page_html + "\n\n"
+            "Additional user context:\n\n" + context
+        )
+        system = (
+            "Return the form-filling actions needed for this page as JSON. "
+            "Return an object with an items array. Each item must contain action "
+            "(type, click, or select), query_selector, question_text, and value when needed. "
+            "Return an empty items array when no actions are appropriate."
+        )
+        raw = self._generate(system, prompt, AgentActions)
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [AgentAction.model_validate(item) for item in parsed]
+        return AgentActions.model_validate(parsed).items

@@ -8,7 +8,7 @@ Input:
 
 Output:
 - Return a JSON array whose objects contain::
-  - site: "lever" or "greenhouse" or "ashbyhq" or "myworkdayjobs" or "smartrecruiters" or jobvite"
+  - site: one of "lever", "greenhouse", "ashbyhq", "myworkdayjobs", "smartrecruiters", or "jobvite"
   - role_focus: string (concise job title or focus, e.g., "Senior Python Backend Engineer")
   - filters: object (key-value pairs capturing constraints like {location: "remote OR (US OR Canada)", visa: "sponsorship", seniority: "senior OR staff", tech: "python OR django OR fastapi", exclude: "intern OR unpaid"})
   - query: string (fully composed Google search query, including operators, quotes, AND/OR, parentheses, site constraints, and minus terms)

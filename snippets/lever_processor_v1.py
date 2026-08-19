@@ -3,7 +3,7 @@ from typing import List, Optional
 import pyperclip
 from sqlalchemy import and_
 
-from src.agents.lever import LeverAgent
+from src.agents.agent import Agent
 from src.config.logger import get_logger
 from src.db.model import (
     ApplicationActions,
@@ -11,14 +11,14 @@ from src.db.model import (
     JobAnalysis,
     SessionLocal,
 )
-from src.models.processors import LeverQuestion
+from src.models.processors import Question
 from src.processors.utils import clean_url
 from src.web.lever import LeverAutoBrowser
 
 
 class LeverQuestionProcessor:
     def __init__(
-        self, agent: LeverAgent, limit: Optional[int] = None, show_browser: bool = False
+        self, agent: Agent, limit: Optional[int] = None, show_browser: bool = False
     ):
         self.agent = agent
         self._logger = get_logger(__name__)
@@ -50,7 +50,7 @@ class LeverQuestionProcessor:
             return data_list
 
     @staticmethod
-    def save_action(posting_id: int, answer: LeverQuestion):
+    def save_action(posting_id: int, answer: Question):
         action = answer.action
         with SessionLocal() as session:
             record = ApplicationActions(
