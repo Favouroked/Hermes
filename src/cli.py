@@ -31,8 +31,100 @@ def _installation(installation_id: str):
         return {
             "resume": record.resume or "",
             "provider": record.llm_provider or "ollama",
-            "openai_key": record.openai_key,
+            "api_key": record.openai_key,
         }
+
+
+def _mask_api_key(api_key: str | None) -> str | None:
+    if not api_key:
+        return None
+    if len(api_key) <= 8:
+        return "****"
+    return f"{api_key[:4]}...{api_key[-4:]}"
+
+
+def _settings_json(record) -> dict:
+    return {
+        "installation_id": record.installation_id,
+        "llm_provider": record.llm_provider or "ollama",
+        "auto_fill": bool(record.auto_fill),
+        "resume": record.resume or "",
+        "preferences": record.preferences or "",
+        "has_api_key": bool(record.openai_key),
+        "api_key": _mask_api_key(record.openai_key),
+    }
+
+
+def show_settings(installation_id: str) -> int:
+    with SessionLocal() as session:
+        record = session.query(InstalledExtensions).filter_by(installation_id=installation_id).one_or_none()
+        if record is None:
+            raise ValueError(f"Installation not found: {installation_id}")
+        print(json.dumps(_settings_json(record), indent=2))
+    return 0
+
+
+def update_settings(
+    installation_id: str,
+    *,
+    resume: str | None = None,
+    resume_file: str | None = None,
+    preferences: str | None = None,
+    preferences_file: str | None = None,
+    llm_provider: str | None = None,
+    api_key: str | None = None,
+    clear_api_key: bool = False,
+    auto_fill: bool | None = None,
+    clear_resume: bool = False,
+    clear_preferences: bool = False,
+) -> int:
+    if resume is not None and resume_file:
+        raise ValueError("--resume and --resume-file cannot be used together")
+    if preferences is not None and preferences_file:
+        raise ValueError("--preferences and --preferences-file cannot be used together")
+    if api_key is not None and clear_api_key:
+        raise ValueError("--api-key and --clear-api-key cannot be used together")
+    if resume is not None and clear_resume or resume_file and clear_resume:
+        raise ValueError("resume value and --clear-resume cannot be used together")
+    if preferences is not None and clear_preferences or preferences_file and clear_preferences:
+        raise ValueError("preferences value and --clear-preferences cannot be used together")
+    if api_key == "":
+        raise ValueError("--api-key cannot be empty; use --clear-api-key")
+
+    if resume_file:
+        resume = Path(resume_file).read_text(encoding="utf-8")
+    if preferences_file:
+        preferences = Path(preferences_file).read_text(encoding="utf-8")
+
+    if all(value is None for value in (resume, preferences, llm_provider, api_key, auto_fill)) and not (
+        clear_api_key or clear_resume or clear_preferences
+    ):
+        raise ValueError("provide at least one setting to update")
+
+    with SessionLocal() as session:
+        record = session.query(InstalledExtensions).filter_by(installation_id=installation_id).one_or_none()
+        if record is None:
+            raise ValueError(f"Installation not found: {installation_id}")
+
+        if resume is not None:
+            record.resume = resume
+        elif clear_resume:
+            record.resume = ""
+        if preferences is not None:
+            record.preferences = preferences
+        elif clear_preferences:
+            record.preferences = ""
+        if llm_provider is not None:
+            record.llm_provider = llm_provider
+        if api_key is not None:
+            record.openai_key = api_key
+        elif clear_api_key:
+            record.openai_key = None
+        if auto_fill is not None:
+            record.auto_fill = auto_fill
+        session.commit()
+        print(json.dumps(_settings_json(record), indent=2))
+    return 0
 
 
 def _run_jobs(run_id: str):
@@ -102,7 +194,7 @@ def generate_worker(run_id: str, resume_file: str | None = None) -> int:
     try:
         installation = _installation(installation_id)
         resume = Path(resume_file).read_text(encoding="utf-8") if resume_file else installation["resume"]
-        agent = Agent(provider=installation["provider"], openai_key=installation["openai_key"])
+        agent = Agent(provider=installation["provider"], openai_key=installation["api_key"])
         for job in _run_jobs(run_id):
             with SessionLocal() as session:
                 run = session.query(CoverLetterRun).filter_by(id=run_id).one()
@@ -227,6 +319,26 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
 def build_parser():
     parser = argparse.ArgumentParser(prog="hermes")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    settings = commands.add_parser("settings")
+    settings_sub = settings.add_subparsers(dest="settings_action", required=True)
+    settings_show = settings_sub.add_parser("show")
+    settings_show.add_argument("--installation-id", required=True)
+    settings_update = settings_sub.add_parser("update")
+    settings_update.add_argument("--installation-id", required=True)
+    settings_update.add_argument("--resume")
+    settings_update.add_argument("--resume-file")
+    settings_update.add_argument("--preferences")
+    settings_update.add_argument("--preferences-file")
+    settings_update.add_argument("--llm-provider", choices=["ollama", "openai"])
+    settings_update.add_argument("--api-key")
+    settings_update.add_argument("--clear-api-key", action="store_true")
+    settings_update.add_argument("--auto-fill", dest="auto_fill", action="store_true")
+    settings_update.add_argument("--no-auto-fill", dest="auto_fill", action="store_false")
+    settings_update.set_defaults(auto_fill=None)
+    settings_update.add_argument("--clear-resume", action="store_true")
+    settings_update.add_argument("--clear-preferences", action="store_true")
+
     cover = commands.add_parser("cover-letter")
     sub = cover.add_subparsers(dest="action", required=True)
     generate = sub.add_parser("generate")
@@ -250,6 +362,22 @@ def build_parser():
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "settings":
+            if args.settings_action == "show":
+                return show_settings(args.installation_id)
+            return update_settings(
+                args.installation_id,
+                resume=args.resume,
+                resume_file=args.resume_file,
+                preferences=args.preferences,
+                preferences_file=args.preferences_file,
+                llm_provider=args.llm_provider,
+                api_key=args.api_key,
+                clear_api_key=args.clear_api_key,
+                auto_fill=args.auto_fill,
+                clear_resume=args.clear_resume,
+                clear_preferences=args.clear_preferences,
+            )
         if args.action == "generate":
             if args.limit is not None and args.limit < 1:
                 raise ValueError("--limit must be greater than zero")

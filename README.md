@@ -128,6 +128,25 @@ Repeat `--status` for multiple statuses and use `--limit` to cap the number of
 rows. The script processes only rows matching both filters and preserves existing
 application actions if a rerun fails.
 
+## Settings CLI
+
+View or update settings for an existing installation from the database-backed
+CLI. The command uses the database in the current working directory:
+
+```bash
+hermes settings show --installation-id <installation-id>
+hermes settings update --installation-id <installation-id> \
+  --resume-file path/to/resume.txt \
+  --preferences "Remote Python roles in Europe" \
+  --llm-provider openai \
+  --api-key <provider-api-key> \
+  --auto-fill
+```
+
+Updates are partial, so omitted settings remain unchanged. Use
+`--clear-api-key`, `--clear-resume`, or `--clear-preferences` to clear a
+stored value. API keys are masked when settings are displayed.
+
 ## Cover-letter CLI
 
 The CLI uses jobs that already have stored page text. Configure an installation
