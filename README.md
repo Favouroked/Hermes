@@ -31,6 +31,18 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
+To install the CLI command into the active virtualenv, install Hermes from the
+repository root:
+
+```bash
+pip install -e .
+hermes --help
+```
+
+Use `pip install .` instead for a regular, non-editable installation. The
+database-backed commands should be run from the directory containing the
+intended `jobs_analyzer.db` file.
+
 4) Start the backend server (port 8080)
 ```bash
 python src/web/api.py
@@ -115,6 +127,28 @@ python scripts/reprocess_job_analysis.py \
 Repeat `--status` for multiple statuses and use `--limit` to cap the number of
 rows. The script processes only rows matching both filters and preserves existing
 application actions if a rerun fails.
+
+## Cover-letter CLI
+
+The CLI uses jobs that already have stored page text. Configure an installation
+and run generation in the background:
+
+```bash
+python -m src.cli cover-letter generate --installation-id <installation-id>
+python -m src.cli cover-letter status --run-id <run-id>
+python -m src.cli cover-letter stop --run-id <run-id>
+```
+
+Use `--resume-file path/to/resume.txt` to override the configured resume and
+`--limit N` to cap a run. To review applications interactively, copy each
+generated letter and open its link:
+
+```bash
+python -m src.cli cover-letter apply-loop --installation-id <installation-id>
+```
+
+Press Enter after applying to mark a job processed, `n` to save notes, or `s`
+to stop. Equivalent wrappers are available in `scripts/`.
 
 ---
 

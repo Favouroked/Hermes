@@ -7,6 +7,7 @@ from src.config.prompts import (
     FILLER_AGENT_SYSTEM_PROMPT,
     GOOGLE_SEARCH_PROMPT,
     JOB_ANALYSIS_SYSTEM_PROMPT,
+    COVER_LETTER_SYSTEM_PROMPT,
 )
 from src.llm.providers import LLMProvider, OpenAIProvider, OllamaProvider
 from src.models.agents import AgentAction, AgentActions, JobDetails, JobGoogleSearchQuery
@@ -16,6 +17,10 @@ from pydantic import BaseModel, Field
 
 class SearchQueries(BaseModel):
     items: List[JobGoogleSearchQuery] = Field(..., description="Generated job searches")
+
+
+class CoverLetter(BaseModel):
+    cover_letter: str = Field(..., description="The finished cover letter")
 
 
 class Agent:
@@ -59,6 +64,14 @@ class Agent:
             JobDetails,
         )
         return JobDetails.model_validate_json(raw)
+
+    def generate_cover_letter(self, page_text: str, resume: str) -> str:
+        raw = self._generate(
+            COVER_LETTER_SYSTEM_PROMPT,
+            f"Candidate resume:\n\n{resume}\n\nJob page text:\n\n{page_text}",
+            CoverLetter,
+        )
+        return CoverLetter.model_validate_json(raw).cover_letter.strip()
 
     def generate_action(
         self, question_html: str, job_description: str, resume: str, preferences: str
