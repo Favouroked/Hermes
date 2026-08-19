@@ -330,7 +330,7 @@ def build_parser():
     settings_update.add_argument("--resume-file")
     settings_update.add_argument("--preferences")
     settings_update.add_argument("--preferences-file")
-    settings_update.add_argument("--llm-provider", choices=["ollama", "openai"])
+    settings_update.add_argument("--llm-provider", choices=["ollama", "openai", "lm_studio"])
     settings_update.add_argument("--api-key")
     settings_update.add_argument("--clear-api-key", action="store_true")
     settings_update.add_argument("--auto-fill", dest="auto_fill", action="store_true")

@@ -40,7 +40,7 @@ class ManualFillRequest(BaseModel):
 
 class SettingsRequest(BaseModel):
     installation_id: str
-    llm_provider: Literal["ollama", "openai"]
+    llm_provider: Literal["ollama", "openai", "lm_studio"]
     openai_key: Optional[str] = None
     auto_fill: bool = False
     resume: str = ""
@@ -58,7 +58,7 @@ class InstallRequest(BaseModel):
     resume: str
     preferences: str
     openai_key: Optional[str] = None
-    llm_provider: Literal["ollama", "openai"] = "ollama"
+    llm_provider: Literal["ollama", "openai", "lm_studio"] = "ollama"
     cutoff_date: Optional[str] = None
 
 

@@ -9,7 +9,7 @@ from src.config.prompts import (
     JOB_ANALYSIS_SYSTEM_PROMPT,
     COVER_LETTER_SYSTEM_PROMPT,
 )
-from src.llm.providers import LLMProvider, OpenAIProvider, OllamaProvider
+from src.llm.providers import LMStudioProvider, LLMProvider, OpenAIProvider, OllamaProvider
 from src.models.agents import AgentAction, AgentActions, JobDetails, JobGoogleSearchQuery
 from src.models.api import InstallRequest
 from pydantic import BaseModel, Field
@@ -36,6 +36,8 @@ class Agent:
             self._provider: LLMProvider = OllamaProvider(config=config)
         elif provider == "openai":
             self._provider = OpenAIProvider(api_key=openai_key, config=config)
+        elif provider == "lm_studio":
+            self._provider = LMStudioProvider(config=config)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         self._provider_name = provider
@@ -56,10 +58,14 @@ class Agent:
             "Preferences:\n\n"
             f"{payload.preferences}\n\n"
         )
-        model = SearchQueries if self._provider_name == "openai" else JobGoogleSearchQuery
+        model = (
+            SearchQueries
+            if self._provider_name in {"openai", "lm_studio"}
+            else JobGoogleSearchQuery
+        )
         raw = self._generate(GOOGLE_SEARCH_PROMPT, prompt, model)
         parsed = json.loads(raw)
-        if self._provider_name == "openai":
+        if self._provider_name in {"openai", "lm_studio"}:
             return SearchQueries.model_validate(parsed).items
         return [JobGoogleSearchQuery.model_validate(item) for item in parsed]
 

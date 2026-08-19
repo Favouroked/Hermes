@@ -26,4 +26,12 @@ class EnvConfig:
     openai_model: str = field(
         default_factory=lambda: _env("OPENAI_MODEL", "gpt-5-nano") or "gpt-5-nano"
     )
+    lm_studio_model: str = field(
+        default_factory=lambda: _env("LM_STUDIO_MODEL", "local-model") or "local-model"
+    )
+    lm_studio_base_url: str = field(
+        default_factory=lambda: _env("LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
+        or "http://localhost:1234/v1"
+    )
+    lm_studio_api_key: str | None = field(default_factory=lambda: _env("LM_STUDIO_API_KEY"))
     logs_file: str | None = field(default_factory=lambda: _env("LOGS_FILE"))

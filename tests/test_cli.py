@@ -55,6 +55,9 @@ def test_cli_parses_provider_neutral_settings_commands():
     assert args.settings_action == "update"
     assert args.api_key == "secret"
     assert args.auto_fill is True
+    assert parser.parse_args([
+        "settings", "update", "--installation-id", "inst", "--llm-provider", "lm_studio",
+    ]).llm_provider == "lm_studio"
 
 
 def test_show_settings_masks_api_key(capsys):

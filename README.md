@@ -80,6 +80,7 @@ python src/web/api.py
 - The server loads `.env` if present (`dotenv.load_dotenv('.env')`).
 - Ollama is the default provider and must be running at `http://localhost:11434`.
 - Optional environment settings are `LLM_PROVIDER`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, and `OPENAI_MODEL`.
+- LM Studio can be selected with `LLM_PROVIDER=lm_studio`. It uses the OpenAI-compatible endpoint at `http://localhost:1234/v1` by default; configure `LM_STUDIO_MODEL`, `LM_STUDIO_BASE_URL`, and optionally `LM_STUDIO_API_KEY` as needed.
 - OpenAI can be selected in the extension with a per-installation API key. If using the API directly, send `llm_provider: "openai"` and `openai_key` to `/api/install`.
 - `OPENAI_API_KEY` can be used as a server-side fallback for OpenAI requests.
 - API keys are stored with the installation record; use a protected local database and do not commit `.env` or database files.
