@@ -1,7 +1,7 @@
 import json
-import os
 from typing import List
 
+from src.config.env import EnvConfig
 from src.config.logger import get_logger
 from src.config.prompts import (
     FILLER_AGENT_SYSTEM_PROMPT,
@@ -24,16 +24,22 @@ class CoverLetter(BaseModel):
 
 
 class Agent:
-    def __init__(self, provider: str | None = None, openai_key: str | None = None):
-        provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
+    def __init__(
+        self,
+        provider: str | None = None,
+        openai_key: str | None = None,
+        config: EnvConfig | None = None,
+    ):
+        config = config or EnvConfig()
+        provider = (provider or config.llm_provider).lower()
         if provider == "ollama":
-            self._provider: LLMProvider = OllamaProvider()
+            self._provider: LLMProvider = OllamaProvider(config=config)
         elif provider == "openai":
-            self._provider = OpenAIProvider(api_key=openai_key)
+            self._provider = OpenAIProvider(api_key=openai_key, config=config)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         self._provider_name = provider
-        self._logger = get_logger(__name__)
+        self._logger = get_logger(__name__, config=config)
 
     def _generate(self, system_prompt: str, user_prompt: str, model: type[BaseModel]) -> str:
         return self._provider.generate(

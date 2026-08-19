@@ -1,10 +1,13 @@
 import logging
-import os
 from typing import Optional
+
+from src.config.env import EnvConfig
 
 
 def setup_logger(
-    name: str = __name__, level: int = logging.INFO, file_path: Optional[str] = None
+    name: str = __name__,
+    level: int = logging.INFO,
+    file_path: Optional[str] = None,
 ) -> logging.Logger:
     """
     Configure and return a logger instance with specified name and level.
@@ -38,7 +41,11 @@ def setup_logger(
     return logger
 
 
-def get_logger(name: str = __name__, file_path: Optional[str] = None) -> logging.Logger:
+def get_logger(
+    name: str = __name__,
+    file_path: Optional[str] = None,
+    config: EnvConfig | None = None,
+) -> logging.Logger:
     """
     Get a configured logger instance.
 
@@ -50,7 +57,8 @@ def get_logger(name: str = __name__, file_path: Optional[str] = None) -> logging
         Configured logger instance
     """
 
-    logs_file = os.getenv("LOGS_FILE")
+    config = config or EnvConfig()
+    logs_file = config.logs_file
     if logs_file and not file_path:
         file_path = logs_file
 
