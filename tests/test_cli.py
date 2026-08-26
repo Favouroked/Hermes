@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from src.agents.agent import Agent
-from src.cli import build_parser, show_settings, update_settings
+from src.cli import apply_loop, build_parser, show_settings, update_settings
 
 
 class SessionContext:
@@ -42,7 +42,52 @@ def test_cli_parses_generation_status_stop_and_loop_commands():
     assert parser.parse_args(["cover-letter", "generate", "--installation-id", "inst"]).action == "generate"
     assert parser.parse_args(["cover-letter", "status", "--run-id", "run"]).run_id == "run"
     assert parser.parse_args(["cover-letter", "stop", "--run-id", "run"]).run_id == "run"
-    assert parser.parse_args(["cover-letter", "apply-loop", "--installation-id", "inst"]).action == "apply-loop"
+    assert parser.parse_args(["apply", "--installation-id", "inst"]).command == "apply"
+
+
+def test_apply_loop_copies_link_and_existing_letter_then_marks_processed(capsys):
+    job = SimpleNamespace(
+        id=1, title="Python Engineer", company="Acme", link="https://example.test/job",
+        page_text="Build APIs", cover_letter="Dear Hiring Team", notes=None,
+    )
+    query = MagicMock()
+    query.filter.return_value.order_by.return_value.all.return_value = [job]
+    session = MagicMock()
+    session.query.return_value = query
+
+    with patch("src.cli.SessionLocal", return_value=SessionContext(session)), \
+         patch("src.cli._installation", return_value={"provider": "ollama", "model": None, "api_key": None, "resume": "resume"}), \
+         patch("src.cli.Agent"), patch("src.cli.pyperclip.copy") as copy, \
+         patch("builtins.input", side_effect=["g", ""]):
+        assert apply_loop("inst") == 0
+
+    assert copy.call_args_list[0].args == (job.link,)
+    assert copy.call_args_list[1].args == (job.cover_letter,)
+    assert "Python Engineer" in capsys.readouterr().out
+
+
+def test_apply_loop_generates_and_persists_new_letter():
+    job = SimpleNamespace(
+        id=1, title="Python Engineer", company=None, link="https://example.test/job",
+        page_text="Build APIs", cover_letter=None, notes=None,
+    )
+    query = MagicMock()
+    query.filter.return_value.order_by.return_value.all.return_value = [job]
+    session = MagicMock()
+    session.query.return_value = query
+    agent = MagicMock()
+    agent.generate_cover_letter.return_value = "Fresh letter"
+
+    with patch("src.cli.SessionLocal", return_value=SessionContext(session)), \
+         patch("src.cli._installation", return_value={"provider": "ollama", "model": None, "api_key": None, "resume": "resume"}), \
+         patch("src.cli.Agent", return_value=agent), patch("src.cli.pyperclip.copy") as copy, \
+         patch("builtins.input", side_effect=["gf", ""]):
+        assert apply_loop("inst") == 0
+
+    agent.generate_cover_letter.assert_called_once_with("Build APIs", "resume")
+    assert job.cover_letter == "Fresh letter"
+    assert copy.call_args_list[0].args == (job.link,)
+    assert copy.call_args_list[1].args == ("Fresh letter",)
 
 
 def test_cli_parses_provider_neutral_settings_commands():

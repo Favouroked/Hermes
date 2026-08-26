@@ -287,15 +287,21 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
         query = session.query(JobAnalysis).filter(
             JobAnalysis.installation_id == installation_id,
             JobAnalysis.is_processed.is_(False),
-            JobAnalysis.cover_letter.is_not(None),
-            JobAnalysis.cover_letter != "",
+            JobAnalysis.page_text.is_not(None),
+            JobAnalysis.page_text != "",
         ).order_by(JobAnalysis.created_at, JobAnalysis.id)
         jobs = query.limit(limit).all() if limit else query.all()
+    installation = _installation(installation_id)
+    agent = Agent(
+        provider=installation["provider"],
+        model=installation["model"],
+        openai_key=installation["api_key"],
+    )
     for position, job in enumerate(jobs, 1):
         print(f"\n[{position}/{len(jobs)}] {job.title} — {job.company or 'Unknown company'}")
         print(job.link)
-        pyperclip.copy(job.cover_letter)
-        print("Cover letter copied. Press Enter to mark processed, n to edit notes, or s to stop.")
+        pyperclip.copy(job.link)
+        print("Link copied. Press Enter to mark processed, g to copy the existing cover letter, gf to generate a new one, n to edit notes, or s to stop.")
         while True:
             try:
                 command = input("> ").strip().lower()
@@ -310,13 +316,34 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
             if command in {"s", "q"}:
                 print("Loop stopped; current job was not marked processed.")
                 return 0
+            if command in {"g", "gf"}:
+                if job.cover_letter and command != "gf":
+                    pyperclip.copy(job.cover_letter)
+                    print("Cover letter copied. Press Enter to continue.")
+                    continue
+                try:
+                    letter = agent.generate_cover_letter(job.page_text, installation["resume"])
+                    if not letter:
+                        raise ValueError("Provider returned an empty cover letter")
+                except Exception as exc:
+                    print(f"Could not generate cover letter: {exc}")
+                    continue
+                with SessionLocal() as session:
+                    session.query(JobAnalysis).filter_by(id=job.id).update(
+                        {"cover_letter": letter, "cover_letter_error": None}
+                    )
+                    session.commit()
+                job.cover_letter = letter
+                pyperclip.copy(letter)
+                print("New cover letter generated, saved, and copied. Press Enter to continue.")
+                continue
             if command == "n":
                 notes = input(f"Notes [{job.notes or ''}]: ")
                 save_note(job.id, installation_id, notes)
                 job.notes = notes
                 print("Notes saved. Press Enter to continue or choose another command.")
                 continue
-            print("Use Enter, n, or s.")
+            print("Use Enter, g, gf, n, or s.")
     print("No more eligible jobs.")
     return 0
 
@@ -356,12 +383,13 @@ def build_parser():
     status.add_argument("--installation-id")
     stop = sub.add_parser("stop", aliases=["cancel"])
     stop.add_argument("--run-id", required=True)
-    loop = sub.add_parser("apply-loop", aliases=["apply"])
-    loop.add_argument("--installation-id", required=True)
-    loop.add_argument("--limit", type=int)
     worker = sub.add_parser("_worker")
     worker.add_argument("--run-id", required=True)
     worker.add_argument("--resume-file")
+
+    apply = commands.add_parser("apply")
+    apply.add_argument("--installation-id", required=True)
+    apply.add_argument("--limit", type=int)
     return parser
 
 
@@ -385,21 +413,25 @@ def main(argv=None) -> int:
                 clear_resume=args.clear_resume,
                 clear_preferences=args.clear_preferences,
             )
-        if args.action == "generate":
+        if args.command == "cover-letter":
+            if args.action == "generate":
+                if args.limit is not None and args.limit < 1:
+                    raise ValueError("--limit must be greater than zero")
+                run_id = start_generation(args.installation_id, args.resume_file, args.limit)
+                print(run_id)
+                return 0
+            if args.action == "status":
+                if not args.run_id and not args.installation_id:
+                    raise ValueError("provide --run-id or --installation-id")
+                return show_status(args.run_id, args.installation_id)
+            if args.action in {"stop", "cancel"}:
+                return stop_generation(args.run_id)
+            return generate_worker(args.run_id, args.resume_file)
+        if args.command == "apply":
             if args.limit is not None and args.limit < 1:
                 raise ValueError("--limit must be greater than zero")
-            run_id = start_generation(args.installation_id, args.resume_file, args.limit)
-            print(run_id)
-            return 0
-        if args.action == "status":
-            if not args.run_id and not args.installation_id:
-                raise ValueError("provide --run-id or --installation-id")
-            return show_status(args.run_id, args.installation_id)
-        if args.action in {"stop", "cancel"}:
-            return stop_generation(args.run_id)
-        if args.action in {"apply-loop", "apply"}:
             return apply_loop(args.installation_id, args.limit)
-        return generate_worker(args.run_id, args.resume_file)
+        raise ValueError("unknown command")
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

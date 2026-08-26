@@ -164,11 +164,13 @@ Use `--resume-file path/to/resume.txt` to override the configured resume and
 generated letter and open its link:
 
 ```bash
-python -m src.cli cover-letter apply-loop --installation-id <installation-id>
+python -m src.cli apply --installation-id <installation-id>
 ```
 
-Press Enter after applying to mark a job processed, `n` to save notes, or `s`
-to stop. Equivalent wrappers are available in `scripts/`.
+Each job’s link is copied first. Press `g` to generate and copy a cover letter,
+`gf` to generate a new one if it already exists, Enter after applying to mark a job
+processed, `n` to save notes, or `s` to stop. Equivalent wrappers are available
+in `scripts/`.
 
 ---
 
