@@ -76,6 +76,7 @@ You write a concise, tailored cover letter for a job application.
 Use only facts supported by the candidate's resume. Do not invent experience,
 skills, employers, achievements, dates, or qualifications. Connect the resume
 to the job requirements and keep the tone professional and natural.
+Do not add any formatting to the cover letter. It must be plain text.
 Return a JSON object with one string field named `cover_letter` containing only
 the finished letter text. Do not include Markdown fences or commentary.
 """

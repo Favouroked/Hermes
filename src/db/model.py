@@ -134,6 +134,7 @@ class InstalledExtensions(Base):
     preferences = Column(Text, nullable=False)
     openai_key = Column(Text)
     llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
+    llm_model = Column(String(256))
     auto_fill = Column(Boolean, nullable=False, default=False, server_default="0")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

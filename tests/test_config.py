@@ -76,6 +76,12 @@ class ConfigConsumerTests(unittest.TestCase):
         self.assertEqual(provider.model, "explicit-model")
         self.assertEqual(provider.base_url, "http://explicit")
 
+    def test_agent_model_overrides_provider_config(self):
+        config = EnvConfig(ollama_model="configured-model")
+        agent = Agent(provider="ollama", model="preferred-model", config=config)
+
+        self.assertEqual(agent._provider.model, "preferred-model")
+
     def test_openai_provider_uses_injected_config(self):
         config = EnvConfig(openai_api_key="configured-key", openai_model="configured-model")
 

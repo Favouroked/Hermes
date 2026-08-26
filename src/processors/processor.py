@@ -45,6 +45,7 @@ class Processor:
         self._agent = Agent(
             provider=self._installation_data["llm_provider"],
             openai_key=self._installation_data["openai_key"],
+            model=self._installation_data["llm_model"],
         )
 
     def _get_installation_data(self):
@@ -62,6 +63,7 @@ class Processor:
                 "preferences": record.preferences,
                 "openai_key": record.openai_key,
                 "llm_provider": record.llm_provider or "ollama",
+                "llm_model": getattr(record, "llm_model", None),
             }
 
     async def _get_browser(self):

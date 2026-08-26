@@ -27,17 +27,19 @@ class Agent:
     def __init__(
         self,
         provider: str | None = None,
+        model: str | None = None,
         openai_key: str | None = None,
         config: EnvConfig | None = None,
     ):
         config = config or EnvConfig()
         provider = (provider or config.llm_provider).lower()
+        model = model or None
         if provider == "ollama":
-            self._provider: LLMProvider = OllamaProvider(config=config)
+            self._provider: LLMProvider = OllamaProvider(model=model, config=config)
         elif provider == "openai":
-            self._provider = OpenAIProvider(api_key=openai_key, config=config)
+            self._provider = OpenAIProvider(api_key=openai_key, model=model, config=config)
         elif provider == "lm_studio":
-            self._provider = LMStudioProvider(config=config)
+            self._provider = LMStudioProvider(model=model, config=config)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         self._provider_name = provider

@@ -97,7 +97,7 @@ This reflects the current codebase behavior.
 ---
 
 ## Notes on LLMs (OpenAI vs Local)
-- `/api/install` accepts `llm_provider` (`ollama`, `openai`, or `lm_studio`) and an optional `openai_key`, and stores them per installation so background processing uses the same provider.
+- `/api/install` accepts `llm_provider` (`ollama`, `openai`, or `lm_studio`), an optional `llm_model`, and an optional `openai_key`, and stores them per installation so every operation uses the same provider/model. When `llm_model` is omitted or blank, the provider’s environment configuration is used.
 - Ollama remains the default. Its model and endpoint can be configured with `OLLAMA_MODEL` and `OLLAMA_BASE_URL`.
 - OpenAI uses `OPENAI_MODEL` (default `gpt-4o-mini`) and prefers the installation key, falling back to `OPENAI_API_KEY`.
 - LM Studio uses `LM_STUDIO_MODEL` and the OpenAI-compatible `LM_STUDIO_BASE_URL` (default `http://localhost:1234/v1`), with an optional `LM_STUDIO_API_KEY`.

@@ -151,10 +151,11 @@ def google_search():
         resume=record.resume,
         preferences=record.preferences,
         llm_provider=record.llm_provider or "ollama",
+        llm_model=getattr(record, "llm_model", None),
         openai_key=record.openai_key,
         cutoff_date=cutoff,
     )
-    searches = Agent(provider=payload.llm_provider, openai_key=payload.openai_key).generate_google_searches(payload)
+    searches = Agent(provider=payload.llm_provider, model=payload.llm_model, openai_key=payload.openai_key).generate_google_searches(payload)
     with SessionLocal() as session:
         session.add(SearchRun(id=run_id, installation_id=data.installation_id, cutoff_date=cutoff, status="running"))
         records = [
@@ -303,7 +304,7 @@ def manual_fill():
         actions = [] if job is None else session.query(ApplicationActions).filter_by(job_analysis_id=job.id).all()
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.answer_text) for a in actions]
     if not response_actions:
-        agent = Agent(provider=record.llm_provider or "ollama", openai_key=record.openai_key)
+        agent = Agent(provider=record.llm_provider or "ollama", model=getattr(record, "llm_model", None), openai_key=record.openai_key)
         generated = agent.generate_actions(html, context or f"Resume:\n{record.resume}\nPreferences:\n{record.preferences}")
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.value) for a in generated]
     return jsonify([item.model_dump(mode="json") for item in response_actions])
@@ -318,6 +319,7 @@ def get_settings():
     return jsonify({
         "installation_id": record.installation_id,
         "llm_provider": record.llm_provider or "ollama",
+        "llm_model": getattr(record, "llm_model", None),
         "has_api_key": bool(record.openai_key),
         "auto_fill": bool(record.auto_fill),
         "resume": record.resume or "",
@@ -334,6 +336,7 @@ def update_settings():
             record = InstalledExtensions(installation_id=data.installation_id, resume="", preferences="")
             session.add(record)
         record.llm_provider = data.llm_provider
+        record.llm_model = data.llm_model or None
         record.openai_key = data.openai_key
         record.auto_fill = data.auto_fill
         record.resume = data.resume
@@ -374,10 +377,10 @@ def install_compat():
     with SessionLocal() as session:
         record = session.query(InstalledExtensions).filter_by(installation_id=data.installation_id).one_or_none()
         if record is None:
-            record = InstalledExtensions(installation_id=data.installation_id, resume=data.resume, preferences=data.preferences, openai_key=data.openai_key, llm_provider=data.llm_provider)
+            record = InstalledExtensions(installation_id=data.installation_id, resume=data.resume, preferences=data.preferences, openai_key=data.openai_key, llm_provider=data.llm_provider, llm_model=data.llm_model or None)
             session.add(record)
         else:
-            record.resume, record.preferences, record.openai_key, record.llm_provider = data.resume, data.preferences, data.openai_key, data.llm_provider
+            record.resume, record.preferences, record.openai_key, record.llm_provider, record.llm_model = data.resume, data.preferences, data.openai_key, data.llm_provider, data.llm_model or None
         session.commit()
     return jsonify({"status": "configured"})
 

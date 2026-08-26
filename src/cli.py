@@ -31,6 +31,7 @@ def _installation(installation_id: str):
         return {
             "resume": record.resume or "",
             "provider": record.llm_provider or "ollama",
+            "model": getattr(record, "llm_model", None),
             "api_key": record.openai_key,
         }
 
@@ -47,6 +48,7 @@ def _settings_json(record) -> dict:
     return {
         "installation_id": record.installation_id,
         "llm_provider": record.llm_provider or "ollama",
+        "llm_model": getattr(record, "llm_model", None),
         "auto_fill": bool(record.auto_fill),
         "resume": record.resume or "",
         "preferences": record.preferences or "",
@@ -72,6 +74,7 @@ def update_settings(
     preferences: str | None = None,
     preferences_file: str | None = None,
     llm_provider: str | None = None,
+    llm_model: str | None = None,
     api_key: str | None = None,
     clear_api_key: bool = False,
     auto_fill: bool | None = None,
@@ -96,7 +99,7 @@ def update_settings(
     if preferences_file:
         preferences = Path(preferences_file).read_text(encoding="utf-8")
 
-    if all(value is None for value in (resume, preferences, llm_provider, api_key, auto_fill)) and not (
+    if all(value is None for value in (resume, preferences, llm_provider, llm_model, api_key, auto_fill)) and not (
         clear_api_key or clear_resume or clear_preferences
     ):
         raise ValueError("provide at least one setting to update")
@@ -116,6 +119,8 @@ def update_settings(
             record.preferences = ""
         if llm_provider is not None:
             record.llm_provider = llm_provider
+        if llm_model is not None:
+            record.llm_model = llm_model or None
         if api_key is not None:
             record.openai_key = api_key
         elif clear_api_key:
@@ -194,7 +199,7 @@ def generate_worker(run_id: str, resume_file: str | None = None) -> int:
     try:
         installation = _installation(installation_id)
         resume = Path(resume_file).read_text(encoding="utf-8") if resume_file else installation["resume"]
-        agent = Agent(provider=installation["provider"], openai_key=installation["api_key"])
+        agent = Agent(provider=installation["provider"], model=installation["model"], openai_key=installation["api_key"])
         for job in _run_jobs(run_id):
             with SessionLocal() as session:
                 run = session.query(CoverLetterRun).filter_by(id=run_id).one()
@@ -331,6 +336,7 @@ def build_parser():
     settings_update.add_argument("--preferences")
     settings_update.add_argument("--preferences-file")
     settings_update.add_argument("--llm-provider", choices=["ollama", "openai", "lm_studio"])
+    settings_update.add_argument("--llm-model")
     settings_update.add_argument("--api-key")
     settings_update.add_argument("--clear-api-key", action="store_true")
     settings_update.add_argument("--auto-fill", dest="auto_fill", action="store_true")
@@ -372,6 +378,7 @@ def main(argv=None) -> int:
                 preferences=args.preferences,
                 preferences_file=args.preferences_file,
                 llm_provider=args.llm_provider,
+                llm_model=args.llm_model,
                 api_key=args.api_key,
                 clear_api_key=args.clear_api_key,
                 auto_fill=args.auto_fill,

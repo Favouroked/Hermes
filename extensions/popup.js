@@ -226,12 +226,13 @@
     }
 
     async function settings() {
-        shell('Settings', '<label>Resume<textarea id="resume" placeholder="Paste your resume text here…"></textarea></label><label>Preferences<textarea id="preferences" placeholder="Describe your job preferences…"></textarea></label><label>LLM Provider<select id="provider"><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lm_studio">LM Studio</option></select></label><label>LLM API Key (optional)<input id="key" type="password" autocomplete="off"></label><label class="row">Auto-fill<input id="auto" type="checkbox" style="width:auto"></label><div class="muted">Extension ID: ' + state.id + '</div><button id="save">Save</button><div id="status"></div>');
+        shell('Settings', '<label>Resume<textarea id="resume" placeholder="Paste your resume text here…"></textarea></label><label>Preferences<textarea id="preferences" placeholder="Describe your job preferences…"></textarea></label><label>LLM Provider<select id="provider"><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lm_studio">LM Studio</option></select></label><label>LLM Model (optional)<input id="model" type="text" placeholder="Uses provider config when blank"></label><label>LLM API Key (optional)<input id="key" type="password" autocomplete="off"></label><label class="row">Auto-fill<input id="auto" type="checkbox" style="width:auto"></label><div class="muted">Extension ID: ' + state.id + '</div><button id="save">Save</button><div id="status"></div>');
         try {
             const s = await api('/api/settings?installation_id=' + encodeURIComponent(state.id));
             $('resume').value = s.resume || '';
             $('preferences').value = s.preferences || '';
             $('provider').value = s.llm_provider;
+            $('model').value = s.llm_model || '';
             $('auto').checked = s.auto_fill;
         } catch (e) {
             status(e.message, true);
@@ -245,6 +246,7 @@
                         resume: $('resume').value,
                         preferences: $('preferences').value,
                         llm_provider: $('provider').value,
+                        llm_model: $('model').value.trim() || null,
                         openai_key: $('key').value || null,
                         auto_fill: $('auto').checked
                     })
