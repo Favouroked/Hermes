@@ -97,3 +97,13 @@ The job text will be provided by the user. The user's resume is specified below:
 {preferences}
 </important_user_preferences>
 """
+
+QUESTION_ANSWER_SYSTEM_PROMPT = """
+You are a helpful assistant that answers questions about the context provided. Always reply in JSON format.
+Your response must be in the JSON format specified below:
+```json
+{
+    "answer": string, // The answer to the question.
+}
+```
+"""

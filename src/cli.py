@@ -318,6 +318,14 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
             if command in {"s", "q"}:
                 print("Loop stopped; current job was not marked processed.")
                 return 0
+            if command == "qa":
+                question = input("Enter your question: ")
+                context = f"Job Description: {job.page_text}\n\nResume: {installation['resume']}"
+                result = agent.answer_question(question, context)
+                answer = result.answer
+                pyperclip.copy(answer)
+                print(f"Answer: {answer}")
+                continue
             if command in {"g", "gf"}:
                 if job.cover_letter and command != "gf":
                     pyperclip.copy(job.cover_letter)

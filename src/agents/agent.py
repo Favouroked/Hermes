@@ -7,7 +7,7 @@ from src.config.prompts import (
     FILLER_AGENT_SYSTEM_PROMPT,
     GOOGLE_SEARCH_PROMPT,
     JOB_ANALYSIS_SYSTEM_PROMPT,
-    COVER_LETTER_SYSTEM_PROMPT,
+    COVER_LETTER_SYSTEM_PROMPT, QUESTION_ANSWER_SYSTEM_PROMPT,
 )
 from src.llm.providers import LMStudioProvider, LLMProvider, OpenAIProvider, OllamaProvider
 from src.models.agents import AgentAction, AgentActions, JobDetails, JobGoogleSearchQuery
@@ -21,6 +21,9 @@ class SearchQueries(BaseModel):
 
 class CoverLetter(BaseModel):
     cover_letter: str = Field(..., description="The finished cover letter")
+
+class Answer(BaseModel):
+    answer: str = Field(..., description="The answer to the question")
 
 
 class Agent:
@@ -52,6 +55,16 @@ class Agent:
             schema=model.model_json_schema(mode="serialization"),
             schema_name=model.__name__.lower(),
         )
+
+    def answer_question(self, question: str, context: str) -> Answer:
+        prompt = (
+            "Question:\n\n"
+            f"{question}\n\n"
+            "Context:\n\n"
+            f"{context}\n\n"
+        )
+        raw = self._generate(QUESTION_ANSWER_SYSTEM_PROMPT, prompt, Answer)
+        return Answer.model_validate_json(raw)
 
     def generate_google_searches(self, payload: InstallRequest) -> List[JobGoogleSearchQuery]:
         prompt = (
