@@ -129,6 +129,16 @@ Repeat `--status` for multiple statuses and use `--limit` to cap the number of
 rows. The script processes only rows matching both filters and preserves existing
 application actions if a rerun fails.
 
+To analyze cancelled rows that have no stored page text, run:
+
+```bash
+hermes analyze --limit 10
+```
+
+The command uses each row's installation settings. Add `--installation-id` to
+restrict processing to one installation. Successful rows are marked
+`completed`; failed rows are marked `failed` and processing continues.
+
 ## Settings CLI
 
 View or update settings for an existing installation from the database-backed

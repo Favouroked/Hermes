@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import pyperclip
 
 from src.agents.agent import Agent
 from src.db.model import CoverLetterRun, InstalledExtensions, JobAnalysis, SessionLocal
+from src.processors.processor import Processor
 
 
 TERMINAL_RUN_STATES = {"completed", "cancelled", "failed"}
@@ -348,6 +350,66 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
     return 0
 
 
+def _analysis_jobs(installation_id: str | None = None, limit: int | None = None):
+    with SessionLocal() as session:
+        query = session.query(JobAnalysis).filter(
+            JobAnalysis.processing_status == "cancelled",
+            JobAnalysis.page_text.is_(None),
+        )
+        if installation_id is not None:
+            query = query.filter(JobAnalysis.installation_id == installation_id)
+        query = query.order_by(JobAnalysis.created_at, JobAnalysis.id)
+        if limit is not None:
+            query = query.limit(limit)
+        return [
+            {"id": job.id, "link": job.link, "installation_id": job.installation_id}
+            for job in query.all()
+        ]
+
+
+def _set_analysis_status(job_id: int, status: str, *, has_error: bool = False):
+    with SessionLocal() as session:
+        session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(
+            {
+                "processing_status": status,
+                "is_processing": status in {"pending", "running"},
+                "has_error": has_error,
+            }
+        )
+        session.commit()
+
+
+async def analyze_jobs(installation_id: str | None = None, limit: int | None = None) -> int:
+    jobs = _analysis_jobs(installation_id, limit)
+    if not jobs:
+        print("No cancelled jobs with null page text found.")
+        return 0
+
+    processors = {}
+    failures = 0
+    try:
+        for job in jobs:
+            _set_analysis_status(job["id"], "running")
+            try:
+                processor = processors.get(job["installation_id"])
+                if processor is None:
+                    processor = Processor(job["installation_id"])
+                    processors[job["installation_id"]] = processor
+                await processor.process_job(job)
+            except Exception as exc:
+                failures += 1
+                _set_analysis_status(job["id"], "failed", has_error=True)
+                print(f"Could not analyze job {job['id']}: {exc}", file=sys.stderr)
+            else:
+                _set_analysis_status(job["id"], "completed")
+    finally:
+        for processor in processors.values():
+            await processor.close_browser()
+
+    print(f"Analyzed {len(jobs) - failures} of {len(jobs)} job(s).")
+    return 1 if failures else 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="hermes")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -390,6 +452,10 @@ def build_parser():
     apply = commands.add_parser("apply")
     apply.add_argument("--installation-id", required=True)
     apply.add_argument("--limit", type=int)
+
+    analyze = commands.add_parser("analyze")
+    analyze.add_argument("--installation-id")
+    analyze.add_argument("--limit", type=int)
     return parser
 
 
@@ -431,6 +497,10 @@ def main(argv=None) -> int:
             if args.limit is not None and args.limit < 1:
                 raise ValueError("--limit must be greater than zero")
             return apply_loop(args.installation_id, args.limit)
+        if args.command == "analyze":
+            if args.limit is not None and args.limit < 1:
+                raise ValueError("--limit must be greater than zero")
+            return asyncio.run(analyze_jobs(args.installation_id, args.limit))
         raise ValueError("unknown command")
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

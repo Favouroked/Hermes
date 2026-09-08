@@ -1,9 +1,10 @@
+import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from src.agents.agent import Agent
-from src.cli import apply_loop, build_parser, show_settings, update_settings
+from src.cli import analyze_jobs, apply_loop, build_parser, show_settings, update_settings
 
 
 class SessionContext:
@@ -43,6 +44,60 @@ def test_cli_parses_generation_status_stop_and_loop_commands():
     assert parser.parse_args(["cover-letter", "status", "--run-id", "run"]).run_id == "run"
     assert parser.parse_args(["cover-letter", "stop", "--run-id", "run"]).run_id == "run"
     assert parser.parse_args(["apply", "--installation-id", "inst"]).command == "apply"
+
+
+def test_cli_parses_analyze_options():
+    parser = build_parser()
+    args = parser.parse_args(["analyze", "--installation-id", "inst", "--limit", "3"])
+    assert args.command == "analyze"
+    assert args.installation_id == "inst"
+    assert args.limit == 3
+
+
+def test_analyze_jobs_marks_successful_rows_completed_and_closes_processors():
+    jobs = [
+        {"id": 1, "link": "https://example.test/one", "installation_id": "inst"},
+        {"id": 2, "link": "https://example.test/two", "installation_id": "inst"},
+    ]
+    processor = MagicMock()
+    processor.process_job = AsyncMock()
+    processor.close_browser = AsyncMock()
+    processor.process_job.side_effect = [None, None]
+
+    with patch("src.cli._analysis_jobs", return_value=jobs), \
+         patch("src.cli._set_analysis_status") as set_status, \
+         patch("src.cli.Processor", return_value=processor):
+        assert asyncio.run(analyze_jobs("inst", 2)) == 0
+
+    assert set_status.call_args_list == [
+        call(1, "running"), call(1, "completed"),
+        call(2, "running"), call(2, "completed"),
+    ]
+    assert processor.process_job.call_count == 2
+    processor.close_browser.assert_awaited_once()
+
+
+def test_analyze_jobs_marks_failures_and_continues(capsys):
+    jobs = [
+        {"id": 1, "link": "https://example.test/one", "installation_id": "inst"},
+        {"id": 2, "link": "https://example.test/two", "installation_id": "inst"},
+    ]
+    processor = MagicMock()
+    processor.process_job = AsyncMock()
+    processor.close_browser = AsyncMock()
+    processor.process_job.side_effect = [RuntimeError("bad page"), None]
+
+    with patch("src.cli._analysis_jobs", return_value=jobs), \
+         patch("src.cli._set_analysis_status") as set_status, \
+         patch("src.cli.Processor", return_value=processor):
+        assert asyncio.run(analyze_jobs()) == 1
+
+    assert set_status.call_args_list == [
+        call(1, "running"), call(1, "failed"),
+        call(2, "running"), call(2, "completed"),
+    ]
+    assert set_status.call_args_list[1].kwargs == {"has_error": True}
+    assert "Could not analyze job 1" in capsys.readouterr().err
 
 
 def test_apply_loop_copies_link_and_existing_letter_then_marks_processed(capsys):

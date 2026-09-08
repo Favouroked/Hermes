@@ -35,3 +35,4 @@ class EnvConfig:
     )
     lm_studio_api_key: str | None = field(default_factory=lambda: _env("LM_STUDIO_API_KEY"))
     logs_file: str | None = field(default_factory=lambda: _env("LOGS_FILE"))
+    analyze_job_questions: bool = field(default_factory=lambda: _env("ANALYZE_JOB_QUESTIONS", "false") == "true")
