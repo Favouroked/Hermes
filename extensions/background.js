@@ -94,15 +94,17 @@ async function openGoogle() {
 }
 
 async function submitGoogleResults() {
+    await loadGoogleState();
     if (googleState.submitted) return;
     googleState.submitted = true;
-    await chrome.storage.local.set({googleState});
+
     try {
         const result = await post('/api/automaton/google-results', {
             installation_id: googleState.installationId,
             search_run_id: googleState.runId,
             links: googleState.links
         });
+        await chrome.storage.local.set({googleState});
         chrome.runtime.sendMessage({
             action: 'googleSubmitted',
             links: googleState.links.length,
@@ -138,6 +140,7 @@ async function stopGoogleSearch() {
 
 async function googlePage(links, tabId, hasNext) {
     await loadGoogleState();
+    console.log(links);
     if (!googleState.active || tabId !== googleState.tabId) return {continue: false};
     googleState.links = [...new Set([...googleState.links, ...links])];
     googleState.pagesVisited = (googleState.pagesVisited || 0) + 1;

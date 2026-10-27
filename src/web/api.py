@@ -183,8 +183,9 @@ def google_search():
 @app.post("/api/automaton/google-results")
 def google_results():
     data = GoogleResultsRequest.model_validate(request.get_json() or {})
-    links = list(dict.fromkeys(clean_url(link) for link in data.links if link))
-    links = [link[:-6] if link.endswith("/apply") else link for link in links]
+    logger.info(data)
+    # links = [clean_url(link) for link in data.links if link]
+    links = [link[:-6] if link.endswith("/apply") else link for link in data.links]
     logger.info(f"Received {len(links)} links for search run {data.search_run_id}")
     with SessionLocal() as session:
         run = session.query(SearchRun).filter_by(id=data.search_run_id, installation_id=data.installation_id).one_or_none()

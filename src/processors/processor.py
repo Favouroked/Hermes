@@ -156,6 +156,9 @@ class Processor:
 
     @staticmethod
     def _validate_url(url: str) -> bool:
+        google_goto_url = "https://www.google.com/goto?url="
+        if google_goto_url in url:
+            return True
         try:
             parsed = urlparse(url)
             hostname = (parsed.hostname or "").lower().rstrip(".")

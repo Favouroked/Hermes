@@ -2,7 +2,6 @@
     'use strict';
     const isGoogle = () => /google\./.test(location.hostname) && location.pathname === '/search';
     const captcha = () => Boolean(document.querySelector('iframe[src*="recaptcha"],.g-recaptcha,#captcha,form[action*="sorry"]')) || /unusual traffic|automated queries/i.test((document.body && document.body.innerText) || '');
-    const extract = () => [...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => /^https?:/.test(h) && !/(google\.|gstatic\.|googleusercontent\.)/.test(new URL(h).hostname)).filter((h, i, a) => a.indexOf(h) === i);
     let sent = false;
 
     function search() {
@@ -14,7 +13,9 @@
         }
         sent = true;
         const next = document.querySelector('#pnnext');
-        chrome.runtime.sendMessage({action: 'googlePage', links: extract(), hasNext: Boolean(next)}, response => {
+        const extractedLinks = [...document.querySelectorAll('.yuRUbf a[href]')]
+            .map(a => a.href);
+        chrome.runtime.sendMessage({action: 'googlePage', links: extractedLinks, hasNext: Boolean(next)}, response => {
             if (response && response.continue && next) {
                 sent = false;
                 setTimeout(() => next.click(), 1200);
@@ -22,7 +23,7 @@
         });
     }
 
-    setTimeout(search, 1000);
+    setTimeout(search, 500);
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'getPageHtml') sendResponse(document.documentElement.outerHTML);
         if (message.action === 'executeActions') {
