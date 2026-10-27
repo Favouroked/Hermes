@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExtensionRequest(BaseModel):
@@ -44,6 +44,7 @@ class SettingsRequest(BaseModel):
     llm_model: Optional[str] = None
     openai_key: Optional[str] = None
     auto_fill: bool = False
+    max_google_search_pages: int = Field(default=10, ge=1, le=100)
     resume: str = ""
     preferences: str = ""
 

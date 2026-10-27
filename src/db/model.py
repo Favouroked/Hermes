@@ -139,6 +139,7 @@ class InstalledExtensions(Base):
     llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
     llm_model = Column(String(256))
     auto_fill = Column(Boolean, nullable=False, default=False, server_default="0")
+    max_google_search_pages = Column(Integer, nullable=False, default=10, server_default="10")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -88,7 +88,7 @@
                 state.run = result;
                 await chrome.storage.local.set({googleRun: result});
                 chrome.runtime.sendMessage({action: 'startGoogleSearch', ...result, installationId: state.id});
-                status(`Opening ${result.urls.length} search pages…`);
+                status(`Opening ${result.urls.length} Google searches (up to ${result.max_google_search_pages} results pages total)…`);
                 setTimeout(() => go('results'), 500);
             } catch (e) {
                 $('start').disabled = false;
@@ -115,6 +115,7 @@
         };
         chrome.runtime.onMessage.addListener(m => {
             if (m.action === 'googleProgress') status(`Search ${m.current} of ${m.total}…`);
+            if (m.action === 'googlePageProgress') status(`Google results page ${m.current} of ${m.total}…`);
             if (m.action === 'googleLinks') {
                 state.links = [...new Set([...state.links, ...m.links])];
                 draw();
@@ -226,19 +227,24 @@
     }
 
     async function settings() {
-        shell('Settings', '<label>Resume<textarea id="resume" placeholder="Paste your resume text here…"></textarea></label><label>Preferences<textarea id="preferences" placeholder="Describe your job preferences…"></textarea></label><label>LLM Provider<select id="provider"><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lm_studio">LM Studio</option></select></label><label>LLM Model (optional)<input id="model" type="text" placeholder="Uses provider config when blank"></label><label>LLM API Key (optional)<input id="key" type="password" autocomplete="off"></label><label class="row">Auto-fill<input id="auto" type="checkbox" style="width:auto"></label><div class="muted">Extension ID: ' + state.id + '</div><button id="save">Save</button><div id="status"></div>');
+        shell('Settings', '<label>Resume<textarea id="resume" placeholder="Paste your resume text here…"></textarea></label><label>Preferences<textarea id="preferences" placeholder="Describe your job preferences…"></textarea></label><label>LLM Provider<select id="provider"><option value="ollama">Ollama</option><option value="openai">OpenAI</option><option value="lm_studio">LM Studio</option></select></label><label>LLM Model (optional)<input id="model" type="text" placeholder="Uses provider config when blank"></label><label>LLM API Key (optional)<input id="key" type="password" autocomplete="off"></label><label>Maximum Google search pages<input id="maxGoogleSearchPages" type="number" min="1" max="100" step="1" value="10" required></label><label class="row">Auto-fill<input id="auto" type="checkbox" style="width:auto"></label><div class="muted">Extension ID: ' + state.id + '</div><button id="save">Save</button><div id="status"></div>');
         try {
             const s = await api('/api/settings?installation_id=' + encodeURIComponent(state.id));
             $('resume').value = s.resume || '';
             $('preferences').value = s.preferences || '';
             $('provider').value = s.llm_provider;
             $('model').value = s.llm_model || '';
+            $('maxGoogleSearchPages').value = s.max_google_search_pages || 10;
             $('auto').checked = s.auto_fill;
         } catch (e) {
             status(e.message, true);
         }
         $('save').onclick = async () => {
             try {
+                const maxGoogleSearchPages = Number($('maxGoogleSearchPages').value);
+                if (!Number.isInteger(maxGoogleSearchPages) || maxGoogleSearchPages < 1 || maxGoogleSearchPages > 100) {
+                    return status('Maximum Google search pages must be between 1 and 100.', true);
+                }
                 await api('/api/settings', {
                     method: 'PATCH',
                     body: JSON.stringify({
@@ -248,7 +254,8 @@
                         llm_provider: $('provider').value,
                         llm_model: $('model').value.trim() || null,
                         openai_key: $('key').value || null,
-                        auto_fill: $('auto').checked
+                        auto_fill: $('auto').checked,
+                        max_google_search_pages: maxGoogleSearchPages
                     })
                 });
                 status('Settings saved.');

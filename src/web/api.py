@@ -128,6 +128,7 @@ def google_search():
             record = InstalledExtensions(installation_id=data.installation_id, resume="", preferences="")
             session.add(record)
             session.commit()
+    max_google_search_pages = getattr(record, "max_google_search_pages", 10) or 10
     run_id = uuid4().hex
     with SessionLocal() as session:
         existing = []
@@ -144,7 +145,11 @@ def google_search():
                 record.google_search_url = _cutoff_url(record.google_search_url, cutoff)
                 record.search_run_id = run_id
             session.commit()
-            return jsonify({"search_run_id": run_id, "urls": [record.google_search_url for record in existing]})
+            return jsonify({
+                "search_run_id": run_id,
+                "urls": [record.google_search_url for record in existing],
+                "max_google_search_pages": max_google_search_pages,
+            })
 
     payload = InstallRequest(
         installation_id=record.installation_id,
@@ -168,7 +173,11 @@ def google_search():
         ]
         session.add_all(records)
         session.commit()
-    return jsonify({"search_run_id": run_id, "urls": [r.google_search_url for r in records]})
+    return jsonify({
+        "search_run_id": run_id,
+        "urls": [r.google_search_url for r in records],
+        "max_google_search_pages": max_google_search_pages,
+    })
 
 
 @app.post("/api/automaton/google-results")
@@ -176,6 +185,7 @@ def google_results():
     data = GoogleResultsRequest.model_validate(request.get_json() or {})
     links = list(dict.fromkeys(clean_url(link) for link in data.links if link))
     links = [link[:-6] if link.endswith("/apply") else link for link in links]
+    logger.info(f"Received {len(links)} links for search run {data.search_run_id}")
     with SessionLocal() as session:
         run = session.query(SearchRun).filter_by(id=data.search_run_id, installation_id=data.installation_id).one_or_none()
         if run is None:
@@ -322,6 +332,7 @@ def get_settings():
         "llm_model": getattr(record, "llm_model", None),
         "has_api_key": bool(record.openai_key),
         "auto_fill": bool(record.auto_fill),
+        "max_google_search_pages": getattr(record, "max_google_search_pages", 10),
         "resume": record.resume or "",
         "preferences": record.preferences or "",
     })
@@ -339,6 +350,7 @@ def update_settings():
         record.llm_model = data.llm_model or None
         record.openai_key = data.openai_key
         record.auto_fill = data.auto_fill
+        record.max_google_search_pages = data.max_google_search_pages
         record.resume = data.resume
         record.preferences = data.preferences
         session.commit()

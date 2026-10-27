@@ -14,11 +14,12 @@
         }
         sent = true;
         const next = document.querySelector('#pnnext');
-        chrome.runtime.sendMessage({action: 'googleLinks', links: extract(), done: !next});
-        if (next) {
-            sent = false;
-            setTimeout(() => next.click(), 1200);
-        }
+        chrome.runtime.sendMessage({action: 'googlePage', links: extract(), hasNext: Boolean(next)}, response => {
+            if (response && response.continue && next) {
+                sent = false;
+                setTimeout(() => next.click(), 1200);
+            }
+        });
     }
 
     setTimeout(search, 1000);
