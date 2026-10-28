@@ -192,14 +192,16 @@ def google_results():
         if run is None:
             return jsonify({"error": "search run not found"}), 404
         existing = {r.link for r in session.query(JobAnalysis).filter(JobAnalysis.installation_id == data.installation_id, JobAnalysis.link.in_(links)).all()}
-        session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True) for link in links if link not in existing)
+        session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True, processing_status='pending') for link in links if link not in existing)
         run.status = "submitted"
         session.commit()
-    processing_run_id = _start_processing(data.installation_id) if links else None
+    # processing_run_id = _start_processing(data.installation_id) if links else None
+    inserted_links_count = len(links) - len(existing)
+    logger.info(f"[{inserted_links_count}] links inserted into db. Run 'hermes analyze --limit 100' to start the analysis process.")
     return jsonify({
         "status": "success",
         "links_received": len(links),
-        "processing_run_id": processing_run_id,
+        "processing_run_id": 'deprecated',
     })
 
 

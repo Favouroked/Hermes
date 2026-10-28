@@ -361,7 +361,7 @@ def apply_loop(installation_id: str, limit: int | None = None) -> int:
 def _analysis_jobs(installation_id: str | None = None, limit: int | None = None):
     with SessionLocal() as session:
         query = session.query(JobAnalysis).filter(
-            JobAnalysis.processing_status == "failed",
+            JobAnalysis.processing_status.in_(["pending", "cancelled"]),
             JobAnalysis.page_text.is_(None),
         )
         if installation_id is not None:
