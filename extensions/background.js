@@ -151,11 +151,8 @@ async function googlePage(links, tabId, hasNext) {
         current: googleState.pagesVisited,
         total: googleState.maxPages
     });
-    if (googleState.pagesVisited >= googleState.maxPages) {
-        await finishGoogleSearch(tabId);
-        return {continue: false};
-    }
-    if (hasNext) return {continue: true};
+
+    if (hasNext && googleState.pagesVisited < googleState.maxPages) return {continue: true};
 
     try {
         await chrome.tabs.remove(tabId);
