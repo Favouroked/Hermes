@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from src.agents.agent import Agent
-from src.llm.providers import OpenAIProvider
+from src.llm.providers import LMStudioProvider, OpenAIProvider
 from src.models.agents import JobDetails
 
 
@@ -31,6 +31,30 @@ class LLMTests(unittest.TestCase):
         self.assertEqual(request["model"], "test-model")
         self.assertEqual(request["response_format"]["type"], "json_schema")
         self.assertEqual(request["response_format"]["json_schema"]["schema"], JobDetails.model_json_schema())
+
+    def test_lm_studio_provider_sends_structured_schema(self):
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"title":"Engineer"}'))]
+        )
+        client = Mock()
+        client.chat.completions.create.return_value = completion
+
+        with patch("src.llm.providers.OpenAI", return_value=client) as openai:
+            provider = LMStudioProvider(model="loaded-model", base_url="http://localhost:1234/v1")
+            result = provider.generate(
+                system_prompt="system",
+                user_prompt="user",
+                schema=JobDetails.model_json_schema(),
+                schema_name="jobdetails",
+            )
+
+        self.assertEqual(json.loads(result)["title"], "Engineer")
+        openai.assert_called_once_with(
+            api_key="lm-studio", base_url="http://localhost:1234/v1"
+        )
+        request = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(request["model"], "loaded-model")
+        self.assertEqual(request["response_format"]["type"], "json_schema")
 
 
     def test_agent_openai_wraps_search_array(self):

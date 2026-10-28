@@ -31,6 +31,18 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
+To install the CLI command into the active virtualenv, install Hermes from the
+repository root:
+
+```bash
+pip install -e .
+hermes --help
+```
+
+Use `pip install .` instead for a regular, non-editable installation. The
+database-backed commands should be run from the directory containing the
+intended `jobs_analyzer.db` file.
+
 4) Start the backend server (port 8080)
 ```bash
 python src/web/api.py
@@ -68,7 +80,8 @@ python src/web/api.py
 - The server loads `.env` if present (`dotenv.load_dotenv('.env')`).
 - Ollama is the default provider and must be running at `http://localhost:11434`.
 - Optional environment settings are `LLM_PROVIDER`, `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, and `OPENAI_MODEL`.
-- OpenAI can be selected in the extension with a per-installation API key. If using the API directly, send `llm_provider: "openai"` and `openai_key` to `/api/install`.
+- LM Studio can be selected with `LLM_PROVIDER=lm_studio`. It uses the OpenAI-compatible endpoint at `http://localhost:1234/v1` by default; configure `LM_STUDIO_MODEL`, `LM_STUDIO_BASE_URL`, and optionally `LM_STUDIO_API_KEY` as needed.
+- OpenAI can be selected in the extension with a per-installation API key. A preferred model can also be saved per installation with `llm_model`; if omitted, the selected provider’s configured model is used. If using the API directly, send `llm_provider: "openai"`, `llm_model` (optional), and `openai_key` to `/api/install`.
 - `OPENAI_API_KEY` can be used as a server-side fallback for OpenAI requests.
 - API keys are stored with the installation record; use a protected local database and do not commit `.env` or database files.
 
@@ -115,6 +128,59 @@ python scripts/reprocess_job_analysis.py \
 Repeat `--status` for multiple statuses and use `--limit` to cap the number of
 rows. The script processes only rows matching both filters and preserves existing
 application actions if a rerun fails.
+
+To analyze cancelled rows that have no stored page text, run:
+
+```bash
+hermes analyze --limit 10
+```
+
+The command uses each row's installation settings. Add `--installation-id` to
+restrict processing to one installation. Successful rows are marked
+`completed`; failed rows are marked `failed` and processing continues.
+
+## Settings CLI
+
+View or update settings for an existing installation from the database-backed
+CLI. The command uses the database in the current working directory:
+
+```bash
+hermes settings show --installation-id <installation-id>
+hermes settings update --installation-id <installation-id> \
+  --resume-file path/to/resume.txt \
+  --preferences "Remote Python roles in Europe" \
+  --llm-provider openai \
+  --api-key <provider-api-key> \
+  --auto-fill
+```
+
+Updates are partial, so omitted settings remain unchanged. Use
+`--clear-api-key`, `--clear-resume`, or `--clear-preferences` to clear a
+stored value. API keys are masked when settings are displayed.
+
+## Cover-letter CLI
+
+The CLI uses jobs that already have stored page text. Configure an installation
+and run generation in the background:
+
+```bash
+python -m src.cli cover-letter generate --installation-id <installation-id>
+python -m src.cli cover-letter status --run-id <run-id>
+python -m src.cli cover-letter stop --run-id <run-id>
+```
+
+Use `--resume-file path/to/resume.txt` to override the configured resume and
+`--limit N` to cap a run. To review applications interactively, copy each
+generated letter and open its link:
+
+```bash
+python -m src.cli apply --installation-id <installation-id>
+```
+
+Each job’s link is copied first. Press `g` to generate and copy a cover letter,
+`gf` to generate a new one if it already exists, Enter after applying to mark a job
+processed, `n` to save notes, or `s` to stop. Equivalent wrappers are available
+in `scripts/`.
 
 ---
 

@@ -31,6 +31,7 @@ class GoogleSearchTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["resume"], "stored resume")
         self.assertEqual(response.json["preferences"], "stored preferences")
+        self.assertIsNone(response.json["llm_model"])
 
     def test_settings_updates_resume_and_preferences(self):
         installation = SimpleNamespace(
@@ -45,6 +46,7 @@ class GoogleSearchTests(unittest.TestCase):
                 json={
                     "installation_id": "hermes-1",
                     "llm_provider": "openai",
+                    "llm_model": "preferred-model",
                     "openai_key": "test-key",
                     "auto_fill": True,
                     "resume": "new resume",
@@ -55,6 +57,7 @@ class GoogleSearchTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(installation.resume, "new resume")
         self.assertEqual(installation.preferences, "new preferences")
+        self.assertEqual(installation.llm_model, "preferred-model")
         self.assertTrue(installation.auto_fill)
         session.commit.assert_called_once()
 

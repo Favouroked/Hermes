@@ -1,5 +1,5 @@
 const API_BASE_URL = 'http://localhost:8080';
-let googleState = {active: false, urls: [], index: 0, runId: null, installationId: null, links: [], submitted: false};
+let googleState = {active: false, urls: [], index: 0, runId: null, installationId: null, links: [], submitted: false, pagesVisited: 0, maxPages: 10};
 const manualTasks = new Map();
 const LINKS_KEY = 'linksRun';
 
@@ -24,13 +24,23 @@ async function post(path, body) {
 
 async function loadGoogleState() {
     const stored = await chrome.storage.local.get('googleState');
-    if (stored.googleState) googleState = stored.googleState;
+    if (stored.googleState) {
+        googleState = stored.googleState;
+        googleState.pagesVisited = Number.isInteger(googleState.pagesVisited) ? googleState.pagesVisited : 0;
+        googleState.maxPages = Number.isInteger(googleState.maxPages) && googleState.maxPages > 0
+            ? googleState.maxPages
+            : 10;
+    }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'startGoogleSearch') startGoogleSearch(request).catch(console.error);
     if (request.action === 'stopGoogleSearch') stopGoogleSearch().catch(console.error);
-    if (request.action === 'googleLinks') googleLinks(request.links || [], sender.tab && sender.tab.id, request.done);
+    if (request.action === 'googlePage') {
+        googlePage(request.links || [], sender.tab && sender.tab.id, request.hasNext)
+            .then(sendResponse)
+            .catch(error => sendResponse({continue: false, error: error.message}));
+    }
     if (request.action === 'captchaDetected') chrome.notifications.create({
         type: 'basic',
         iconUrl: 'icon48.png',
@@ -55,7 +65,11 @@ async function startGoogleSearch(request) {
         runId: request.search_run_id,
         installationId: request.installationId,
         links: [],
-        submitted: false
+        submitted: false,
+        pagesVisited: 0,
+        maxPages: Number.isInteger(request.max_google_search_pages) && request.max_google_search_pages > 0
+            ? request.max_google_search_pages
+            : 10
     };
     await chrome.storage.local.set({googleState, currentRoute: 'results'});
     await openGoogle();
@@ -80,15 +94,17 @@ async function openGoogle() {
 }
 
 async function submitGoogleResults() {
+    await loadGoogleState();
     if (googleState.submitted) return;
     googleState.submitted = true;
-    await chrome.storage.local.set({googleState});
+
     try {
         const result = await post('/api/automaton/google-results', {
             installation_id: googleState.installationId,
             search_run_id: googleState.runId,
             links: googleState.links
         });
+        await chrome.storage.local.set({googleState});
         chrome.runtime.sendMessage({
             action: 'googleSubmitted',
             links: googleState.links.length,
@@ -122,13 +138,25 @@ async function stopGoogleSearch() {
     await submitGoogleResults();
 }
 
-async function googleLinks(links, tabId, done) {
+async function googlePage(links, tabId, hasNext) {
     await loadGoogleState();
-    if (!googleState.active || tabId !== googleState.tabId) return;
+    console.log(links);
+    if (!googleState.active || tabId !== googleState.tabId) return {continue: false};
     googleState.links = [...new Set([...googleState.links, ...links])];
+    googleState.pagesVisited = (googleState.pagesVisited || 0) + 1;
     await chrome.storage.local.set({googleState});
     chrome.runtime.sendMessage({action: 'googleLinks', links});
-    if (!done) return;
+    chrome.runtime.sendMessage({
+        action: 'googlePageProgress',
+        current: googleState.pagesVisited,
+        total: googleState.maxPages
+    });
+    if (googleState.pagesVisited >= googleState.maxPages) {
+        await finishGoogleSearch(tabId);
+        return {continue: false};
+    }
+    if (hasNext) return {continue: true};
+
     try {
         await chrome.tabs.remove(tabId);
     } catch (e) {
@@ -137,6 +165,19 @@ async function googleLinks(links, tabId, done) {
     googleState.tabId = null;
     await chrome.storage.local.set({googleState});
     await openGoogle();
+    return {continue: false};
+}
+
+async function finishGoogleSearch(tabId) {
+    try {
+        await chrome.tabs.remove(tabId);
+    } catch (e) {
+    }
+    googleState.active = false;
+    googleState.tabId = null;
+    await chrome.storage.local.set({googleState});
+    chrome.runtime.sendMessage({action: 'googleComplete'});
+    await submitGoogleResults();
 }
 
 async function startLinks(links, installationId) {

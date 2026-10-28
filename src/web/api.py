@@ -128,6 +128,7 @@ def google_search():
             record = InstalledExtensions(installation_id=data.installation_id, resume="", preferences="")
             session.add(record)
             session.commit()
+    max_google_search_pages = getattr(record, "max_google_search_pages", 10) or 10
     run_id = uuid4().hex
     with SessionLocal() as session:
         existing = []
@@ -144,17 +145,22 @@ def google_search():
                 record.google_search_url = _cutoff_url(record.google_search_url, cutoff)
                 record.search_run_id = run_id
             session.commit()
-            return jsonify({"search_run_id": run_id, "urls": [record.google_search_url for record in existing]})
+            return jsonify({
+                "search_run_id": run_id,
+                "urls": [record.google_search_url for record in existing],
+                "max_google_search_pages": max_google_search_pages,
+            })
 
     payload = InstallRequest(
         installation_id=record.installation_id,
         resume=record.resume,
         preferences=record.preferences,
         llm_provider=record.llm_provider or "ollama",
+        llm_model=getattr(record, "llm_model", None),
         openai_key=record.openai_key,
         cutoff_date=cutoff,
     )
-    searches = Agent(provider=payload.llm_provider, openai_key=payload.openai_key).generate_google_searches(payload)
+    searches = Agent(provider=payload.llm_provider, model=payload.llm_model, openai_key=payload.openai_key).generate_google_searches(payload)
     with SessionLocal() as session:
         session.add(SearchRun(id=run_id, installation_id=data.installation_id, cutoff_date=cutoff, status="running"))
         records = [
@@ -167,27 +173,35 @@ def google_search():
         ]
         session.add_all(records)
         session.commit()
-    return jsonify({"search_run_id": run_id, "urls": [r.google_search_url for r in records]})
+    return jsonify({
+        "search_run_id": run_id,
+        "urls": [r.google_search_url for r in records],
+        "max_google_search_pages": max_google_search_pages,
+    })
 
 
 @app.post("/api/automaton/google-results")
 def google_results():
     data = GoogleResultsRequest.model_validate(request.get_json() or {})
-    links = list(dict.fromkeys(clean_url(link) for link in data.links if link))
-    links = [link[:-6] if link.endswith("/apply") else link for link in links]
+    logger.info(data)
+    # links = [clean_url(link) for link in data.links if link]
+    links = [link[:-6] if link.endswith("/apply") else link for link in data.links]
+    logger.info(f"Received {len(links)} links for search run {data.search_run_id}")
     with SessionLocal() as session:
         run = session.query(SearchRun).filter_by(id=data.search_run_id, installation_id=data.installation_id).one_or_none()
         if run is None:
             return jsonify({"error": "search run not found"}), 404
         existing = {r.link for r in session.query(JobAnalysis).filter(JobAnalysis.installation_id == data.installation_id, JobAnalysis.link.in_(links)).all()}
-        session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True) for link in links if link not in existing)
+        session.add_all(JobAnalysis(link=link, title="processing...", installation_id=data.installation_id, is_processing=True, processing_status='pending') for link in links if link not in existing)
         run.status = "submitted"
         session.commit()
-    processing_run_id = _start_processing(data.installation_id) if links else None
+    # processing_run_id = _start_processing(data.installation_id) if links else None
+    inserted_links_count = len(links) - len(existing)
+    logger.info(f"[{inserted_links_count}] links inserted into db. Run 'hermes analyze --limit 100' to start the analysis process.")
     return jsonify({
         "status": "success",
         "links_received": len(links),
-        "processing_run_id": processing_run_id,
+        "processing_run_id": 'deprecated',
     })
 
 
@@ -303,7 +317,7 @@ def manual_fill():
         actions = [] if job is None else session.query(ApplicationActions).filter_by(job_analysis_id=job.id).all()
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.answer_text) for a in actions]
     if not response_actions:
-        agent = Agent(provider=record.llm_provider or "ollama", openai_key=record.openai_key)
+        agent = Agent(provider=record.llm_provider or "ollama", model=getattr(record, "llm_model", None), openai_key=record.openai_key)
         generated = agent.generate_actions(html, context or f"Resume:\n{record.resume}\nPreferences:\n{record.preferences}")
         response_actions = [Action(action=a.action, query_selector=a.query_selector, value=a.value) for a in generated]
     return jsonify([item.model_dump(mode="json") for item in response_actions])
@@ -318,8 +332,10 @@ def get_settings():
     return jsonify({
         "installation_id": record.installation_id,
         "llm_provider": record.llm_provider or "ollama",
+        "llm_model": getattr(record, "llm_model", None),
         "has_api_key": bool(record.openai_key),
         "auto_fill": bool(record.auto_fill),
+        "max_google_search_pages": getattr(record, "max_google_search_pages", 10),
         "resume": record.resume or "",
         "preferences": record.preferences or "",
     })
@@ -334,8 +350,10 @@ def update_settings():
             record = InstalledExtensions(installation_id=data.installation_id, resume="", preferences="")
             session.add(record)
         record.llm_provider = data.llm_provider
+        record.llm_model = data.llm_model or None
         record.openai_key = data.openai_key
         record.auto_fill = data.auto_fill
+        record.max_google_search_pages = data.max_google_search_pages
         record.resume = data.resume
         record.preferences = data.preferences
         session.commit()
@@ -374,10 +392,10 @@ def install_compat():
     with SessionLocal() as session:
         record = session.query(InstalledExtensions).filter_by(installation_id=data.installation_id).one_or_none()
         if record is None:
-            record = InstalledExtensions(installation_id=data.installation_id, resume=data.resume, preferences=data.preferences, openai_key=data.openai_key, llm_provider=data.llm_provider)
+            record = InstalledExtensions(installation_id=data.installation_id, resume=data.resume, preferences=data.preferences, openai_key=data.openai_key, llm_provider=data.llm_provider, llm_model=data.llm_model or None)
             session.add(record)
         else:
-            record.resume, record.preferences, record.openai_key, record.llm_provider = data.resume, data.preferences, data.openai_key, data.llm_provider
+            record.resume, record.preferences, record.openai_key, record.llm_provider, record.llm_model = data.resume, data.preferences, data.openai_key, data.llm_provider, data.llm_model or None
         session.commit()
     return jsonify({"status": "configured"})
 

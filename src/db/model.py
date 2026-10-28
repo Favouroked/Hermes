@@ -11,8 +11,11 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
+from pathlib import Path
 
-DATABASE_URL = "sqlite:///jobs_analyzer.db"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATABASE_PATH = PROJECT_ROOT / "jobs_analyzer.db"
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
@@ -39,6 +42,9 @@ class JobAnalysis(Base):
     is_agent_processed = Column(Boolean, nullable=False, default=False)
     processing_run_id = Column(String(64), ForeignKey("processing_runs.id"), nullable=True, index=True)
     processing_status = Column(String(32), nullable=False, default="pending", server_default="pending")
+    cover_letter_run_id = Column(String(64), ForeignKey("cover_letter_runs.id"), nullable=True, index=True)
+    cover_letter_status = Column(String(32), nullable=False, default="pending", server_default="pending")
+    cover_letter_error = Column(Text)
     installation_id = Column(String(128), nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -47,6 +53,18 @@ class JobAnalysis(Base):
 
 class ProcessingRun(Base):
     __tablename__ = "processing_runs"
+
+    id = Column(String(64), primary_key=True)
+    installation_id = Column(String(128), nullable=False, index=True)
+    status = Column(String(32), nullable=False, default="queued", server_default="queued")
+    cancel_requested = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    finished_at = Column(DateTime(timezone=True))
+
+
+class CoverLetterRun(Base):
+    __tablename__ = "cover_letter_runs"
 
     id = Column(String(64), primary_key=True)
     installation_id = Column(String(128), nullable=False, index=True)
@@ -119,7 +137,9 @@ class InstalledExtensions(Base):
     preferences = Column(Text, nullable=False)
     openai_key = Column(Text)
     llm_provider = Column(String(32), nullable=False, default="ollama", server_default="ollama")
+    llm_model = Column(String(256))
     auto_fill = Column(Boolean, nullable=False, default=False, server_default="0")
+    max_google_search_pages = Column(Integer, nullable=False, default=10, server_default="10")
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

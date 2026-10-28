@@ -1,14 +1,15 @@
 import json
-import os
 from typing import List
 
+from src.config.env import EnvConfig
 from src.config.logger import get_logger
 from src.config.prompts import (
     FILLER_AGENT_SYSTEM_PROMPT,
     GOOGLE_SEARCH_PROMPT,
     JOB_ANALYSIS_SYSTEM_PROMPT,
+    COVER_LETTER_SYSTEM_PROMPT, QUESTION_ANSWER_SYSTEM_PROMPT,
 )
-from src.llm.providers import LLMProvider, OpenAIProvider, OllamaProvider
+from src.llm.providers import LMStudioProvider, LLMProvider, OpenAIProvider, OllamaProvider
 from src.models.agents import AgentAction, AgentActions, JobDetails, JobGoogleSearchQuery
 from src.models.api import InstallRequest
 from pydantic import BaseModel, Field
@@ -18,17 +19,34 @@ class SearchQueries(BaseModel):
     items: List[JobGoogleSearchQuery] = Field(..., description="Generated job searches")
 
 
+class CoverLetter(BaseModel):
+    cover_letter: str = Field(..., description="The finished cover letter")
+
+class Answer(BaseModel):
+    answer: str = Field(..., description="The answer to the question")
+
+
 class Agent:
-    def __init__(self, provider: str | None = None, openai_key: str | None = None):
-        provider = (provider or os.getenv("LLM_PROVIDER", "ollama")).lower()
+    def __init__(
+        self,
+        provider: str | None = None,
+        model: str | None = None,
+        openai_key: str | None = None,
+        config: EnvConfig | None = None,
+    ):
+        config = config or EnvConfig()
+        provider = (provider or config.llm_provider).lower()
+        model = model or None
         if provider == "ollama":
-            self._provider: LLMProvider = OllamaProvider()
+            self._provider: LLMProvider = OllamaProvider(model=model, config=config)
         elif provider == "openai":
-            self._provider = OpenAIProvider(api_key=openai_key)
+            self._provider = OpenAIProvider(api_key=openai_key, model=model, config=config)
+        elif provider == "lm_studio":
+            self._provider = LMStudioProvider(model=model, config=config)
         else:
             raise ValueError(f"Unsupported LLM provider: {provider}")
         self._provider_name = provider
-        self._logger = get_logger(__name__)
+        self._logger = get_logger(__name__, config=config)
 
     def _generate(self, system_prompt: str, user_prompt: str, model: type[BaseModel]) -> str:
         return self._provider.generate(
@@ -38,6 +56,16 @@ class Agent:
             schema_name=model.__name__.lower(),
         )
 
+    def answer_question(self, question: str, context: str) -> Answer:
+        prompt = (
+            "Question:\n\n"
+            f"{question}\n\n"
+            "Context:\n\n"
+            f"{context}\n\n"
+        )
+        raw = self._generate(QUESTION_ANSWER_SYSTEM_PROMPT, prompt, Answer)
+        return Answer.model_validate_json(raw)
+
     def generate_google_searches(self, payload: InstallRequest) -> List[JobGoogleSearchQuery]:
         prompt = (
             "Resume text:\n\n"
@@ -45,10 +73,14 @@ class Agent:
             "Preferences:\n\n"
             f"{payload.preferences}\n\n"
         )
-        model = SearchQueries if self._provider_name == "openai" else JobGoogleSearchQuery
+        model = (
+            SearchQueries
+            if self._provider_name in {"openai", "lm_studio"}
+            else JobGoogleSearchQuery
+        )
         raw = self._generate(GOOGLE_SEARCH_PROMPT, prompt, model)
         parsed = json.loads(raw)
-        if self._provider_name == "openai":
+        if self._provider_name in {"openai", "lm_studio"}:
             return SearchQueries.model_validate(parsed).items
         return [JobGoogleSearchQuery.model_validate(item) for item in parsed]
 
@@ -59,6 +91,14 @@ class Agent:
             JobDetails,
         )
         return JobDetails.model_validate_json(raw)
+
+    def generate_cover_letter(self, page_text: str, resume: str) -> str:
+        raw = self._generate(
+            COVER_LETTER_SYSTEM_PROMPT,
+            f"Candidate resume:\n\n{resume}\n\nJob page text:\n\n{page_text}",
+            CoverLetter,
+        )
+        return CoverLetter.model_validate_json(raw).cover_letter.strip()
 
     def generate_action(
         self, question_html: str, job_description: str, resume: str, preferences: str

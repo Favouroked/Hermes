@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ExtensionRequest(BaseModel):
@@ -40,9 +40,11 @@ class ManualFillRequest(BaseModel):
 
 class SettingsRequest(BaseModel):
     installation_id: str
-    llm_provider: Literal["ollama", "openai"]
+    llm_provider: Literal["ollama", "openai", "lm_studio"]
+    llm_model: Optional[str] = None
     openai_key: Optional[str] = None
     auto_fill: bool = False
+    max_google_search_pages: int = Field(default=10, ge=1, le=100)
     resume: str = ""
     preferences: str = ""
 
@@ -58,7 +60,8 @@ class InstallRequest(BaseModel):
     resume: str
     preferences: str
     openai_key: Optional[str] = None
-    llm_provider: Literal["ollama", "openai"] = "ollama"
+    llm_provider: Literal["ollama", "openai", "lm_studio"] = "ollama"
+    llm_model: Optional[str] = None
     cutoff_date: Optional[str] = None
 
 

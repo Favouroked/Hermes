@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from pyppeteer import launch
 from tqdm import tqdm
 
+from src.config.env import EnvConfig
 from src.agents.agent import Agent
 from src.config.logger import get_logger
 from src.db.model import (
@@ -45,7 +46,9 @@ class Processor:
         self._agent = Agent(
             provider=self._installation_data["llm_provider"],
             openai_key=self._installation_data["openai_key"],
+            model=self._installation_data["llm_model"],
         )
+        self._analyze_job_questions: bool = EnvConfig().analyze_job_questions
 
     def _get_installation_data(self):
         with SessionLocal() as session:
@@ -62,6 +65,7 @@ class Processor:
                 "preferences": record.preferences,
                 "openai_key": record.openai_key,
                 "llm_provider": record.llm_provider or "ollama",
+                "llm_model": getattr(record, "llm_model", None),
             }
 
     async def _get_browser(self):
@@ -152,6 +156,9 @@ class Processor:
 
     @staticmethod
     def _validate_url(url: str) -> bool:
+        google_goto_url = "https://www.google.com/goto?url="
+        if google_goto_url in url:
+            return True
         try:
             parsed = urlparse(url)
             hostname = (parsed.hostname or "").lower().rstrip(".")
@@ -196,7 +203,7 @@ class Processor:
             session.query(JobAnalysis).filter(JobAnalysis.id == job_id).update(updates)
             session.commit()
 
-        if is_unknown:
+        if is_unknown or not self._analyze_job_questions:
             return
 
         questions = [
