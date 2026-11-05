@@ -5,12 +5,14 @@ import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+from typing import List
 from uuid import uuid4
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from itsdangerous import exc
 
 from src.agents.agent import Agent
 from src.config.logger import get_logger
@@ -30,6 +32,9 @@ from src.models.api import (
     SettingsRequest,
 )
 from src.processors.utils import clean_url
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 load_dotenv(".env")
 logger = get_logger(__name__)
@@ -179,14 +184,37 @@ def google_search():
         "max_google_search_pages": max_google_search_pages,
     })
 
+def _destination_url(url: str) -> str | None:
+    """Return the HTTP(S) destination from a Google /goto URL, if valid."""
+    try:
+        r = requests.get(url)
+        r.raise_for_status()
+        return r.url
+    except Exception as e:
+        logger.error(f"Error extracting destination for url [{url}]: [{e}]")
+        return None
+
+def _resolve_google_goto_urls(links: List[str]) -> List[str]:
+    links = [l for l in links if l]
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(_destination_url, l) for l in links]
+
+        urls = set()
+        for future in as_completed(futures):
+            url = future.result()
+            if not url:
+                continue
+            urls.add(url)
+        return list(urls)
 
 @app.post("/api/automaton/google-results")
 def google_results():
     data = GoogleResultsRequest.model_validate(request.get_json() or {})
     logger.info(data)
-    # links = [clean_url(link) for link in data.links if link]
-    links = [link[:-6] if link.endswith("/apply") else link for link in data.links]
+
+    links = _resolve_google_goto_urls(data.links)
     logger.info(f"Received {len(links)} links for search run {data.search_run_id}")
+
     with SessionLocal() as session:
         run = session.query(SearchRun).filter_by(id=data.search_run_id, installation_id=data.installation_id).one_or_none()
         if run is None:
