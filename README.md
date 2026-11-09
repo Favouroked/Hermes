@@ -139,6 +139,18 @@ The command uses each row's installation settings. Add `--installation-id` to
 restrict processing to one installation. Successful rows are marked
 `completed`; failed rows are marked `failed` and processing continues.
 
+## Repair Google redirect links
+
+Replace stored Google `/goto` links in `job_analysis.link` with their destination
+URLs. Preview the changes first, then run without `--dry-run` to save them:
+
+```bash
+uv run python scripts/fix_google_goto_links.py --dry-run
+uv run python scripts/fix_google_goto_links.py
+```
+
+Use `--limit` to cap the number of rows processed.
+
 ## Settings CLI
 
 View or update settings for an existing installation from the database-backed
