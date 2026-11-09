@@ -184,12 +184,17 @@ def google_search():
         "max_google_search_pages": max_google_search_pages,
     })
 
-def _destination_url(url: str) -> str | None:
+def _destination_url(url: str, attempts: int = 0) -> str | None:
     """Return the HTTP(S) destination from a Google /goto URL, if valid."""
     try:
         r = requests.get(url)
         r.raise_for_status()
-        return r.url
+        resolved_url = r.url
+        if "google.com/goto" not in resolved_url:
+            return resolved_url
+        if attempts < 5:
+            return _destination_url(resolved_url, attempts + 1)
+        return None
     except Exception as e:
         logger.error(f"Error extracting destination for url [{url}]: [{e}]")
         return None
@@ -210,10 +215,11 @@ def _resolve_google_goto_urls(links: List[str]) -> List[str]:
 @app.post("/api/automaton/google-results")
 def google_results():
     data = GoogleResultsRequest.model_validate(request.get_json() or {})
-    logger.info(data)
+    logger.info(data.model_dump(mode="json"))
 
     links = _resolve_google_goto_urls(data.links)
     logger.info(f"Received {len(links)} links for search run {data.search_run_id}")
+    logger.info(links)
 
     with SessionLocal() as session:
         run = session.query(SearchRun).filter_by(id=data.search_run_id, installation_id=data.installation_id).one_or_none()
